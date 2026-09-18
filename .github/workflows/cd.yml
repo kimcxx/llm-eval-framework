@@ -61,6 +61,8 @@ jobs:
           fi
 
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true   # 仓库未开 Pages 时自动启用（GitHub Actions 构建）
 
       - uses: actions/upload-pages-artifact@v3
         with:
