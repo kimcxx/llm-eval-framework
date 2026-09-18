@@ -1,0 +1,20 @@
+{"id": "math-001", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 23 × 47。", "expected": "1081", "metrics": ["exact_match"]}
+{"id": "math-002", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 156 + 289。", "expected": "445", "metrics": ["exact_match"]}
+{"id": "math-003", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 1024 ÷ 16。", "expected": "64", "metrics": ["exact_match"]}
+{"id": "math-004", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 37 × 12。", "expected": "444", "metrics": ["exact_match"]}
+{"id": "math-005", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "一个班有 45 名学生，其中 60% 是女生，女生有多少人？", "expected": "27", "metrics": ["exact_match"]}
+{"id": "math-006", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "某商品原价 200 元，打八折后售价是多少元？", "expected": "160", "metrics": ["exact_match"]}
+{"id": "math-007", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "若 3x + 7 = 22，则 x 等于多少？", "expected": "5", "metrics": ["exact_match"]}
+{"id": "math-008", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "一个长方形长 12 米、宽 8 米，它的面积是多少平方米？", "expected": "96", "metrics": ["exact_match"]}
+{"id": "math-009", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "一辆汽车以每小时 60 公里的速度行驶 3.5 小时，共行驶多少公里？", "expected": "210", "metrics": ["exact_match"]}
+{"id": "math-010", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 2 的 10 次方。", "expected": "1024", "metrics": ["exact_match"]}
+{"id": "math-011", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "数据组 3, 7, 7, 11, 15 的中位数是多少？", "expected": "7", "metrics": ["exact_match"]}
+{"id": "math-012", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "数据组 2, 4, 4, 4, 5, 5, 7, 9 的平均数是多少？", "expected": "5", "metrics": ["exact_match"]}
+{"id": "math-013", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "甲有 120 元，比乙多 25%，乙有多少元？", "expected": "96", "metrics": ["exact_match"]}
+{"id": "math-014", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 99 × 101。", "expected": "9999", "metrics": ["exact_match"]}
+{"id": "math-015", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "一个正方体棱长为 5 厘米，它的体积是多少立方厘米？", "expected": "125", "metrics": ["exact_match"]}
+{"id": "math-016", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "10000 元按年化 5% 计息，一年后本息合计多少元？", "expected": "10500", "metrics": ["exact_match"]}
+{"id": "math-017", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "从 5 个人中选出 2 人组成小组，共有多少种选法？", "expected": "10", "metrics": ["exact_match"]}
+{"id": "math-018", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "计算 7! ÷ 5! 的值。", "expected": "42", "metrics": ["exact_match"]}
+{"id": "math-019", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "一个数的 3 倍减去 8 等于 37，这个数是多少？", "expected": "15", "metrics": ["exact_match"]}
+{"id": "math-020", "category": "math_reasoning", "system": "你是数学解题助手。请认真计算，并只输出最终数值结果，不要输出过程或单位。", "prompt": "一件商品成本 80 元，以 120 元售出，利润率是多少百分比？只填数字。", "expected": "50", "metrics": ["exact_match"]}

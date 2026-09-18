@@ -1,0 +1,70 @@
+# ============================================================
+# 被测模型配置
+# ------------------------------------------------------------
+# provider:
+#   openai_compat —— 走 OpenAI 兼容协议（DeepSeek / 通义 / 智谱都支持）
+#   mock          —— 本地假模型，不消耗额度，用于验证评测框架本身
+#
+# price_per_1k_* —— 单价（元 / 千 token），仅用于成本统计，按官网实际价格修改
+# ============================================================
+
+models:
+  # ---------------- 本地 Mock：无需 Key，用来验证框架 ---------------- #
+  - name: mock-baseline
+    provider: mock
+    model: mock-rule-based
+    price_per_1k_input: 0.0
+    price_per_1k_output: 0.0
+
+  # ---------------- DeepSeek ---------------- #
+  - name: deepseek-chat
+    provider: openai_compat
+    model: deepseek-chat
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com/v1
+    temperature: 0.0
+    max_tokens: 1024
+    price_per_1k_input: 0.001
+    price_per_1k_output: 0.002
+
+  # ---------------- 通义千问（阿里云百炼兼容模式）---------------- #
+  - name: qwen-plus
+    provider: openai_compat
+    model: qwen-plus
+    api_key_env: DASHSCOPE_API_KEY
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    temperature: 0.0
+    max_tokens: 1024
+    price_per_1k_input: 0.0008
+    price_per_1k_output: 0.002
+
+  # ---------------- 智谱 GLM ---------------- #
+  - name: glm-4-flash
+    provider: openai_compat
+    model: glm-4-flash
+    api_key_env: ZHIPU_API_KEY
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    temperature: 0.0
+    max_tokens: 1024
+    price_per_1k_input: 0.0
+    price_per_1k_output: 0.0
+
+# ============================================================
+# 裁判模型（LLM-as-a-Judge）
+# 数据集里用到 "judge" 指标时会调用它，留空则自动跳过 judge 指标
+# ============================================================
+judge_model: deepseek-chat
+
+# ============================================================
+# 评测运行参数
+# ============================================================
+run:
+  workers: 4                  # 并发线程数，注意模型侧的限流
+  max_retries: 3              # 单次调用失败重试次数
+  timeout_s: 60               # 单次调用超时
+  similarity_threshold: 0.75  # 语义相似度指标的通过阈值
+  judge_threshold: 4.0        # LLM 裁判的通过阈值（1~5 分制）
+
+paths:
+  datasets_dir: datasets
+  output_dir: reports

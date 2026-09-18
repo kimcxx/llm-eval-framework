@@ -1,0 +1,22 @@
+{"id": "qa-001", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "中国的首都是哪座城市？", "expected": "北京", "keywords": ["北京"], "metrics": ["contains"]}
+{"id": "qa-002", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "太阳系中体积最大的行星是哪一个？", "expected": "木星", "keywords": ["木星"], "metrics": ["contains"]}
+{"id": "qa-003", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "水的化学式是什么？", "expected": "H2O", "keywords": ["H2O"], "metrics": ["contains"]}
+{"id": "qa-004", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "世界上面积最大的大洋是哪一个大洋？", "expected": "太平洋", "keywords": ["太平洋"], "metrics": ["contains"]}
+{"id": "qa-005", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "中国古代用于航海定向的四大发明之一是什么？", "expected": "指南针", "keywords": ["指南针"], "metrics": ["contains"]}
+{"id": "qa-006", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "Python 语言中用于定义函数的关键字是什么？", "expected": "def", "keywords": ["def"], "metrics": ["contains"]}
+{"id": "qa-007", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "HTTP 状态码 404 表示什么含义？", "expected": "请求的资源未找到", "keywords": ["未找到"], "metrics": ["contains"]}
+{"id": "qa-008", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "人体面积最大的器官是什么？", "expected": "皮肤", "keywords": ["皮肤"], "metrics": ["contains"]}
+{"id": "qa-009", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "地球绕太阳公转一周大约需要多少天？", "expected": "约 365 天", "keywords": ["365"], "metrics": ["contains"]}
+{"id": "qa-010", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "圆周率 π 保留两位小数约等于多少？", "expected": "3.14", "keywords": ["3.14"], "metrics": ["contains"]}
+{"id": "qa-011", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "中国一共有多少个省级行政区？", "expected": "34 个", "keywords": ["34"], "metrics": ["contains"]}
+{"id": "qa-012", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "计算机中 1 个字节等于多少个二进制位？", "expected": "8 位", "keywords": ["8"], "metrics": ["contains"]}
+{"id": "qa-013", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "世界上最深的海沟叫什么名字？", "expected": "马里亚纳海沟", "keywords": ["马里亚纳海沟"], "metrics": ["contains"]}
+{"id": "qa-014", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "DNA 的中文全称是什么？", "expected": "脱氧核糖核酸", "keywords": ["脱氧核糖核酸"], "metrics": ["contains"]}
+{"id": "qa-015", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "植物进行光合作用的主要场所是细胞的哪个结构？", "expected": "叶绿体", "keywords": ["叶绿体"], "metrics": ["contains"]}
+{"id": "qa-016", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "CPU 的中文全称是什么？", "expected": "中央处理器", "keywords": ["中央处理器"], "metrics": ["contains"]}
+{"id": "qa-017", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "光年是天文学中的长度单位还是时间单位？", "expected": "长度单位", "keywords": ["长度单位"], "metrics": ["contains"]}
+{"id": "qa-018", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "中国农历一年通常包含多少个节气？", "expected": "24 个", "keywords": ["24"], "metrics": ["contains"]}
+{"id": "qa-019", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "世界上人口最多的大洲是哪一个？", "expected": "亚洲", "keywords": ["亚洲"], "metrics": ["contains"]}
+{"id": "qa-020", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "二氧化碳的化学式怎么写？", "expected": "CO2", "keywords": ["CO2", "CO₂"], "metrics": ["contains"]}
+{"id": "qa-021", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "中国最长的高原铁路是哪一条？", "expected": "青藏铁路", "keywords": ["青藏铁路"], "metrics": ["contains"]}
+{"id": "qa-022", "category": "qa_zh", "system": "你是严谨的中文知识问答助手。回答简洁准确，一句话内直接给出答案。", "prompt": "计算机中用于表示真假两种状态的数据类型通常被称作什么？", "expected": "布尔类型", "keywords": ["布尔"], "metrics": ["contains"]}

@@ -1,0 +1,70 @@
+# LLM 评测报告
+
+| 项目 | 内容 |
+| --- | --- |
+| 生成时间 | {{ generated_at }} |
+| 评测开始 | {{ report.started_at }} |
+| 评测结束 | {{ report.finished_at }} |
+| 总耗时 | {{ report.duration_s | ms }} ms |
+| 被测模型 | {{ report.models | join(", ") }} |
+| 数据集 | {{ report.datasets | join(", ") }} |
+| 调用总次数 | {{ report.case_count }} |
+| 参与判定指标 | {{ metric_names | join(", ") }} |
+
+## 一、总体结果
+
+| 模型 | 用例数 | 通过 | 失败 | 跳过 | 调用异常 | **通过率** | 语义相似度 | 裁判均分 | 平均延迟(ms) | P95延迟(ms) | Tokens | 成本 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+{% for row in summary_rows %}
+| `{{ row.model }}` | {{ row.total }} | {{ row.passed }} | {{ row.failed }} | {{ row.skipped }} | {{ row.errors }} | **{{ row.pass_rate | pct }}** | {% if row.avg_similarity is not none %}{{ row.avg_similarity | num }}{% else %}-{% endif %} | {% if row.avg_judge is not none %}{{ row.avg_judge | num }}{% else %}-{% endif %} | {{ row.avg_latency_ms | ms }} | {{ row.p95_latency_ms | ms }} | {{ row.total_tokens }} | {{ row.cost | money }} |
+{% endfor %}
+
+> 通过率 = 通过 / (通过 + 失败)。**「跳过」不计入分母** —— 裁判不可用、参考文本缺失属于评测侧问题，不应算作模型失败。
+> 「调用异常」已计入失败，单独列出用于区分「模型答错」与「接口调用失败」。
+
+## 二、分类结果
+
+{% for model in report.models %}
+### 模型 `{{ model }}`
+
+| 类别 | 用例数 | 通过 | 通过率 | 平均延迟(ms) | 调用异常 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+{% for row in category_rows[model] %}
+| {{ row.category }} | {{ row.total }} | {{ row.passed }} | {{ row.pass_rate | pct }} | {{ row.avg_latency_ms | ms }} | {{ row.errors }} |
+{% endfor %}
+
+{% endfor %}
+## 三、失败用例明细（每模型最多 15 条）
+
+{% for model in report.models %}
+### 模型 `{{ model }}`
+
+{% set rows = failure_rows[model] %}
+{% if rows %}
+{% for row in rows %}
+- **`{{ row.case_id }}`**（{{ row.category }}）
+  - 期望：`{{ row.expected | pretty }}`
+  - 实际：`{{ row.response | flat }}`
+{% if row.error %}
+  - 调用异常：`{{ row.error | flat }}`
+{% endif %}
+{% for reason in row.reasons %}
+  - {{ reason }}
+{% endfor %}
+{% endfor %}
+{% else %}
+本模型无失败用例。
+{% endif %}
+
+{% endfor %}
+## 四、运行备注
+
+{% for note in report.notes %}
+- {{ note }}
+{% endfor %}
+{% for name, count in skipped_metrics.items() %}
+- ⚠️ 指标 `{{ name }}` 因不可用被跳过，共影响 {{ count }} 条用例记录
+{% endfor %}
+{% if report.config_path %}
+- 配置文件：`{{ report.config_path }}`
+{% endif %}
