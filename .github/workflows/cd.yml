@@ -1,0 +1,70 @@
+name: CD 报告看板
+
+# 持续交付：main 分支一合并（或手动触发），自动
+#   ① 跑全量测试（发布门禁）→ ② 跑一次评测生成新报告
+#   → ③ 新报告归档回仓库（保持看板历史）→ ④ 构建静态看板 → ⑤ 发布到 GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 需要把新报告写回 main
+  pages: write      # GitHub Pages 发布
+  id-token: write   # Pages OIDC 认证
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: 评测并发布看板
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 全量测试（发布门禁）
+        run: pytest -q
+
+      - name: 跑一次评测生成最新报告
+        run: python scripts/run_eval.py --models mock-baseline --no-embedding --tag cd
+
+      - name: 归档新报告到 dashboard/data
+        run: cp reports/report-*.json dashboard/data/
+
+      - name: 构建静态看板
+        run: python dashboard/build_static.py --reports-dir dashboard/data --out dashboard/dist
+
+      - name: 新报告写回 main（保持看板历史）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/data
+          if git diff --cached --quiet; then
+            echo "无新报告，跳过回写"
+          else
+            git commit -m "chore: 归档 CD 评测报告 [skip ci]"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard/dist
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

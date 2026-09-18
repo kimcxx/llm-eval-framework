@@ -1,0 +1,574 @@
+{
+  "started_at": "2026-09-18T21:30:37",
+  "finished_at": "2026-09-18T21:30:37",
+  "duration_s": 0.0,
+  "models": [
+    "mock-baseline"
+  ],
+  "datasets": [
+    "qa_zh"
+  ],
+  "case_count": 22,
+  "notes": [
+    "未配置可用裁判模型，judge 指标已被跳过"
+  ],
+  "summary": [
+    {
+      "model": "mock-baseline",
+      "total": 22,
+      "passed": 1,
+      "failed": 21,
+      "skipped": 0,
+      "errors": 0,
+      "pass_rate": 0.0455,
+      "avg_latency_ms": 0.05,
+      "p95_latency_ms": 0.06,
+      "cost": 0.0,
+      "total_tokens": 859,
+      "metric_avg": {
+        "contains": 0.0455
+      }
+    }
+  ],
+  "categories": {
+    "mock-baseline": [
+      {
+        "category": "qa_zh",
+        "total": 22,
+        "passed": 1,
+        "failed": 21,
+        "pass_rate": 0.0455
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "qa-001",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "中国的首都是哪座城市？",
+      "expected": "北京",
+      "response": "规则基线回答，题目要点：中国的首都是哪座城市？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.84,
+      "prompt_tokens": 10,
+      "completion_tokens": 20,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['北京']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-002",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "太阳系中体积最大的行星是哪一个？",
+      "expected": "木星",
+      "response": "规则基线回答，题目要点：太阳系中体积最大的行星是哪一个？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.03,
+      "prompt_tokens": 15,
+      "completion_tokens": 25,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['木星']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-003",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "水的化学式是什么？",
+      "expected": "H2O",
+      "response": "规则基线回答，题目要点：水的化学式是什么？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 8,
+      "completion_tokens": 18,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['H2O']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-004",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "世界上面积最大的大洋是哪一个大洋？",
+      "expected": "太平洋",
+      "response": "规则基线回答，题目要点：世界上面积最大的大洋是哪一个大洋？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 16,
+      "completion_tokens": 26,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['太平洋']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-005",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "中国古代用于航海定向的四大发明之一是什么？",
+      "expected": "指南针",
+      "response": "规则基线回答，题目要点：中国古代用于航海定向的四大发明之一是什么？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 20,
+      "completion_tokens": 30,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['指南针']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-006",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "Python 语言中用于定义函数的关键字是什么？",
+      "expected": "def",
+      "response": "规则基线回答，题目要点：Python 语言中用于定义函数的关键字是什么？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 18,
+      "completion_tokens": 28,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['def']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-007",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "HTTP 状态码 404 表示什么含义？",
+      "expected": "请求的资源未找到",
+      "response": "规则基线回答，题目要点：HTTP 状态码 404 表示什么含义？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 11,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['未找到']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-008",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "人体面积最大的器官是什么？",
+      "expected": "皮肤",
+      "response": "规则基线回答，题目要点：人体面积最大的器官是什么？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 12,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['皮肤']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-009",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "地球绕太阳公转一周大约需要多少天？",
+      "expected": "约 365 天",
+      "response": "规则基线回答，题目要点：地球绕太阳公转一周大约需要多少天？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 16,
+      "completion_tokens": 26,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['365']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-010",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "圆周率 π 保留两位小数约等于多少？",
+      "expected": "3.14",
+      "response": "规则基线回答，题目要点：圆周率 π 保留两位小数约等于多少？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 15,
+      "completion_tokens": 25,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['3.14']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-011",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "中国一共有多少个省级行政区？",
+      "expected": "34 个",
+      "response": "规则基线回答，题目要点：中国一共有多少个省级行政区？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 13,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['34']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-012",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "计算机中 1 个字节等于多少个二进制位？",
+      "expected": "8 位",
+      "response": "规则基线回答，题目要点：计算机中 1 个字节等于多少个二进制位？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.06,
+      "prompt_tokens": 17,
+      "completion_tokens": 27,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['8']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-013",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "世界上最深的海沟叫什么名字？",
+      "expected": "马里亚纳海沟",
+      "response": "规则基线回答，题目要点：世界上最深的海沟叫什么名字？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 13,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['马里亚纳海沟']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-014",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "DNA 的中文全称是什么？",
+      "expected": "脱氧核糖核酸",
+      "response": "规则基线回答，题目要点：DNA 的中文全称是什么？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 9,
+      "completion_tokens": 19,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['脱氧核糖核酸']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-015",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "植物进行光合作用的主要场所是细胞的哪个结构？",
+      "expected": "叶绿体",
+      "response": "规则基线回答，题目要点：植物进行光合作用的主要场所是细胞的哪个结构？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 21,
+      "completion_tokens": 31,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['叶绿体']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-016",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "CPU 的中文全称是什么？",
+      "expected": "中央处理器",
+      "response": "规则基线回答，题目要点：CPU 的中文全称是什么？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 9,
+      "completion_tokens": 19,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['中央处理器']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-017",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "光年是天文学中的长度单位还是时间单位？",
+      "expected": "长度单位",
+      "response": "规则基线回答，题目要点：光年是天文学中的长度单位还是时间单位？",
+      "passed": true,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 18,
+      "completion_tokens": 28,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-018",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "中国农历一年通常包含多少个节气？",
+      "expected": "24 个",
+      "response": "规则基线回答，题目要点：中国农历一年通常包含多少个节气？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 15,
+      "completion_tokens": 25,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['24']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-019",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "世界上人口最多的大洲是哪一个？",
+      "expected": "亚洲",
+      "response": "规则基线回答，题目要点：世界上人口最多的大洲是哪一个？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 14,
+      "completion_tokens": 24,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['亚洲']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-020",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "二氧化碳的化学式怎么写？",
+      "expected": "CO2",
+      "response": "规则基线回答，题目要点：二氧化碳的化学式怎么写？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 11,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/2；缺失 ['CO2', 'CO₂']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-021",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "中国最长的高原铁路是哪一条？",
+      "expected": "青藏铁路",
+      "response": "规则基线回答，题目要点：中国最长的高原铁路是哪一条？",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 13,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['青藏铁路']"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "qa-022",
+      "category": "qa_zh",
+      "dataset": "qa_zh",
+      "model": "mock-baseline",
+      "prompt": "计算机中用于表示真假两种状态的数据类型通常被称作什么？",
+      "expected": "布尔类型",
+      "response": "规则基线回答，题目要点：计算机中用于表示真假两种状态的数据类型通常被称作",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 26,
+      "completion_tokens": 34,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['布尔']"
+        }
+      ],
+      "skipped_metrics": []
+    }
+  ]
+}
