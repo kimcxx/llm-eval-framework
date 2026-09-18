@@ -72,6 +72,18 @@ def _install_fake_sentence_transformers(monkeypatch, sleep_seconds: float = 0.05
     fake_module = ModuleType("sentence_transformers")
     fake_module.SentenceTransformer = FakeSentenceTransformer
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    # 伪造 numpy：compute() 的 embedding 打分路径会 ``import numpy as np``，
+    # 而 numpy 与 sentence-transformers 一样是可选依赖（CI 不安装）。
+    # 这里只实现 ``np.dot``（本测试唯一用到的函数），避免测试对未声明依赖产生隐性依赖。
+    fake_numpy = ModuleType("numpy")
+
+    def _dot(a, b) -> float:
+        return sum(float(x) * float(y) for x, y in zip(list(a), list(b)))
+
+    fake_numpy.dot = _dot
+    monkeypatch.setitem(sys.modules, "numpy", fake_numpy)
+
     return state
 
 
