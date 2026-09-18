@@ -52,8 +52,13 @@ def load_dataset(path: Path) -> list[EvalCase]:
 def load_datasets(
     datasets_dir: Path,
     names: Iterable[str] | None = None,
+    categories: list[str] | None = None,
 ) -> list[EvalCase]:
-    """加载目录下的全部数据集，或用 names 指定若干文件名（不含后缀）。"""
+    """加载目录下的全部数据集，或用 names 指定若干文件名（不含后缀）。
+
+    categories 非空时只保留类别在列表内的用例（类别名大小写不敏感）；
+    过滤后为空则抛 ValueError。
+    """
     available = list_datasets(datasets_dir)
     if not available:
         raise DatasetError(f"目录 {datasets_dir} 下没有找到任何 .jsonl/.json 数据集")
@@ -70,6 +75,13 @@ def load_datasets(
     cases: list[EvalCase] = []
     for path in selected:
         cases.extend(load_dataset(path))
+
+    if categories:
+        wanted = {c.strip().lower() for c in categories if c and c.strip()}
+        if wanted:
+            cases = [case for case in cases if case.category.lower() in wanted]
+            if not cases:
+                raise ValueError(f"以下类别均无匹配用例: {', '.join(categories)}")
     return cases
 
 

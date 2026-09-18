@@ -5,6 +5,7 @@
     python scripts/run_eval.py --models mock-baseline
     python scripts/run_eval.py --models deepseek-chat qwen-plus --tag v1
     python scripts/run_eval.py --datasets math_reasoning --limit 5
+    python scripts/run_eval.py --models mock-baseline --no-embedding --categories qa_zh,math_reasoning
 """
 
 from __future__ import annotations
@@ -34,7 +35,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="模型配置文件")
     parser.add_argument("--models", nargs="*", help="只评测指定模型，默认评测全部可用模型")
     parser.add_argument("--datasets", nargs="*", help="只评测指定数据集（文件名，不含后缀）")
-    parser.add_argument("--categories", nargs="*", help="只评测指定类别")
+    parser.add_argument(
+        "--categories",
+        default=None,
+        help="只评测指定类别（逗号分隔，如 --categories qa_zh,math；类别名大小写不敏感）",
+    )
     parser.add_argument("--workers", type=int, default=None, help="并发线程数")
     parser.add_argument("--limit", type=int, default=None, help="每个数据集最多取多少条用例")
     parser.add_argument("--tag", default=None, help="报告文件名前缀，便于版本间对比")
@@ -85,13 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     clients = build_clients(config, args.models, strict=args.strict)
     model_configs = {cfg.name: cfg for cfg in config.models}
 
-    cases = load_datasets(config.paths.datasets_dir, args.datasets)
+    categories = None
     if args.categories:
-        wanted = set(args.categories)
-        cases = [c for c in cases if c.category in wanted]
-        if not cases:
-            print(f"没有匹配到任何类别 {sorted(wanted)} 的用例", file=sys.stderr)
-            return 2
+        categories = [c.strip() for c in args.categories.split(",") if c.strip()]
+    cases = load_datasets(config.paths.datasets_dir, args.datasets, categories=categories)
     cases = apply_limit(cases, args.limit)
 
     judge_client = None
