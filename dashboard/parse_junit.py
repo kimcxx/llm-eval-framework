@@ -71,6 +71,7 @@ def parse(junit_xml: Path, meta: dict[str, str] | None = None) -> dict[str, Any]
     total = passed = failed = skipped = errors = 0
     duration_s = 0.0
     failed_tests: list[dict[str, str]] = []
+    detail_tests: list[dict[str, Any]] = []
 
     # pytest 默认根标签是 <testsuites>，单个 suite 时是 <testsuite>
     suites = list(root) if root.tag == "testsuites" else [root]
@@ -85,18 +86,31 @@ def parse(junit_xml: Path, meta: dict[str, str] | None = None) -> dict[str, Any]
         for tc in suite.findall("testcase"):
             name = tc.get("name", "")
             classname = tc.get("classname", "")
-            if tc.find("failure") is not None:
+            time_s = round(float(tc.get("time", "0") or 0), 3)
+            fail_node = tc.find("failure")
+            err_node = tc.find("error")
+            skip_node = tc.find("skipped")
+            if fail_node is not None:
                 failed += 1
+                msg = fail_node.get("message", "") if fail_node is not None else ""
                 if len(failed_tests) < 50:
-                    fail_node = tc.find("failure")
-                    msg = fail_node.get("message", "") if fail_node is not None else ""
                     failed_tests.append({"classname": classname, "name": name, "message": msg[:500]})
-            elif tc.find("error") is not None:
+                if len(detail_tests) < 5000:
+                    detail_tests.append({"classname": classname, "name": name, "status": "fail", "duration_s": time_s, "message": msg[:500]})
+            elif err_node is not None:
                 errors += 1
-            elif tc.find("skipped") is not None:
+                msg = err_node.get("message", "") if err_node is not None else ""
+                if len(detail_tests) < 5000:
+                    detail_tests.append({"classname": classname, "name": name, "status": "error", "duration_s": time_s, "message": msg[:500]})
+            elif skip_node is not None:
                 skipped += 1
+                msg = skip_node.get("message", "") if skip_node is not None else ""
+                if len(detail_tests) < 5000:
+                    detail_tests.append({"classname": classname, "name": name, "status": "skip", "duration_s": time_s, "message": msg[:200]})
             else:
                 passed += 1
+                if len(detail_tests) < 5000:
+                    detail_tests.append({"classname": classname, "name": name, "status": "pass", "duration_s": time_s, "message": ""})
 
     summary: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -107,6 +121,7 @@ def parse(junit_xml: Path, meta: dict[str, str] | None = None) -> dict[str, Any]
         "errors": errors,
         "duration_s": round(duration_s, 2),
         "failed_tests": failed_tests,
+        "detail_tests": detail_tests,
     }
     if meta:
         summary.update({k: v for k, v in meta.items() if v})
@@ -118,27 +133,55 @@ def main() -> int:
 
     用法：
         python parse_junit.py <junit-xml>             # 输出到 stdout（UTF-8 字节）
-        python parse_junit.py <junit-xml> -o <文件>   # 写入文件（避免管道编码问题）
-        python parse_junit.py <junit-xml> --out <文件>
+        python parse_junit.py <junit-xml> -o <文件>   # 写入 summary 文件
+        python parse_junit.py <junit-xml> --detail <文件>  # 同时输出用例明细到另一文件
     """
     args = sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
-        print("用法: python parse_junit.py <junit-xml> [-o <文件>]", file=sys.stderr)
+        print("用法: python parse_junit.py <junit-xml> [-o <文件>] [--detail <文件>]", file=sys.stderr)
         return 2
     junit_xml = Path(args[0])
     out_path: Path | None = None
-    if len(args) >= 3 and args[1] in ("-o", "--out"):
-        out_path = Path(args[2])
+    detail_path: Path | None = None
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a in ("-o", "--out") and i + 1 < len(args):
+            out_path = Path(args[i + 1]); i += 2
+        elif a in ("-d", "--detail") and i + 1 < len(args):
+            detail_path = Path(args[i + 1]); i += 2
+        else:
+            print(f"未知参数: {a}", file=sys.stderr)
+            return 2
 
     meta = _meta_from_env()
     summary = parse(junit_xml, meta=meta)
-    body = json.dumps(summary, ensure_ascii=False, indent=2) + "\n"
+
+    # summary 主体：剥掉 detail_tests（独立成文件，避免首页数据过大）
+    summary_for_output = {k: v for k, v in summary.items() if k != "detail_tests"}
+    body = json.dumps(summary_for_output, ensure_ascii=False, indent=2) + "\n"
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(body, encoding="utf-8")
     else:
-        # 直接写字节，绕过 stdout 的编码（Windows PowerShell 默认 UTF-16 会破坏 JSON）
         sys.stdout.buffer.write(body.encode("utf-8"))
+
+    # detail 文件：只包含用例列表 + 顶层元信息
+    if detail_path:
+        detail_payload = {
+            "generated_at": summary["generated_at"],
+            "total": summary["total"],
+            "tests": summary["detail_tests"],
+        }
+        # 同样带 meta 字段（branch/commit/run_url），便于跳转
+        for k in ("branch", "commit", "run_id", "run_url", "pytest_version"):
+            if k in summary:
+                detail_payload[k] = summary[k]
+        detail_path.parent.mkdir(parents=True, exist_ok=True)
+        detail_path.write_text(
+            json.dumps(detail_payload, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     return 0
 
 

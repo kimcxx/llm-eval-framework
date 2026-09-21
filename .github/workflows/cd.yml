@@ -42,9 +42,14 @@ jobs:
       - name: 解析测试摘要（看板 CI 卡片用）
         run: |
           mkdir -p dashboard/data
-          python dashboard/parse_junit.py tests-junit.xml --out dashboard/data/tests-summary.json
+          python dashboard/parse_junit.py tests-junit.xml \
+            --out dashboard/data/tests-summary.json \
+            --detail dashboard/data/tests-detail.json
           echo "::group::tests-summary.json"
           cat dashboard/data/tests-summary.json
+          echo "::group::tests-detail.json ($(wc -l < dashboard/data/tests-detail.json) 行)"
+          head -c 300 dashboard/data/tests-detail.json
+          echo
           echo "::endgroup::"
 
       - name: 跑一次评测生成最新报告
