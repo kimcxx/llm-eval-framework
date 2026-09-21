@@ -221,7 +221,11 @@ const DIM_LABELS = {correctness:'正确性', instruction_following:'指令遵循
                     safety:'安全', robustness:'鲁棒性', knowledge:'知识时效', untagged:'未标注'};
 const dimLabel = d => d ? (DIM_LABELS[d] || d) : '未标注';
 const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(--bad)';
-const rateCell = x => `<td><div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div></td>`;
+const rateInner = x => `<div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div>`;
+const rateCell = x => `<td>${rateInner(x)}</td>`;
+// 横向报告一份文件含多个模型，列表里必须按模型逐行展示（只显示第一个会让人以为整份报告是 mock）
+const isMultiModel = r => !!(r.model_rows && r.model_rows.length > 1);
+const multiCell = (r, fn) => r.model_rows.map(fn).join('');
 
 // 把任意 Python/JSON 值渲染成 HTML（dict/list 原样展示，str 保留换行）
 const formatAny = v => {
@@ -270,8 +274,8 @@ async function renderList(reports) {
     <div class="grid" style="margin-bottom:16px">
       <div class="stat"><div class="k">报告数</div><div class="v">${reports.length}</div></div>
       <div class="stat"><div class="k">单次最多用例</div><div class="v">${Math.max(...reports.map(r=>r.case_count))}</div></div>
-      <div class="stat"><div class="k">最新通过率</div><div class="v" style="color:${rateColor(reports[0].pass_rate)}">${pct(reports[0].pass_rate)}</div></div>
-      <div class="stat"><div class="k">最新模型</div><div class="v" style="font-size:15px">${esc(reports[0].model)}</div></div>
+      <div class="stat"><div class="k">最新通过率</div><div class="v" style="color:${rateColor(reports[0].pass_rate)}">${isMultiModel(reports[0]) ? `${pct(Math.min(...reports[0].model_rows.map(x=>x.pass_rate)))} ~ ${pct(Math.max(...reports[0].model_rows.map(x=>x.pass_rate)))}` : pct(reports[0].pass_rate)}</div></div>
+      <div class="stat"><div class="k">最新模型</div><div class="v" style="font-size:14px">${esc(isMultiModel(reports[0]) ? reports[0].models.join(' / ') : reports[0].model)}</div></div>
     </div>
     ${hasTests ? `
     <div class="card">
@@ -299,16 +303,28 @@ async function renderList(reports) {
     <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>通过率</th><th>P95 延迟</th></tr>
-      ${reports.map((r, i) => `
+      ${reports.map((r, i) => {
+        const multi = isMultiModel(r);
+        const modelCell = multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model);
+        const totalCell = multi ? multiCell(r, x => `<div>${x.total}</div>`) : `${r.case_count}`;
+        const pfCell = multi ? multiCell(r, x => `<div>${x.passed} / ${x.failed}</div>`) : `${r.passed} / ${r.failed}`;
+        const rateCellHtml = multi
+          ? `<td>${multiCell(r, x => rateInner(x.pass_rate))}</td>`
+          : rateCell(r.pass_rate);
+        const p95Cell = multi
+          ? multiCell(r, x => `<div>${x.p95 != null ? x.p95.toFixed(2) + ' ms' : '—'}</div>`)
+          : (r.p95 != null ? r.p95.toFixed(2) + ' ms' : '—');
+        return `
         <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
-          <td>#${reports.length - i} <span class="badge">${r.tag || 'run'}</span></td>
+          <td>#${reports.length - i} <span class="badge">${r.tag || 'run'}</span>${multi ? ` <span class="badge">${r.model_rows.length} 模型</span>` : ''}</td>
           <td class="catname">${esc(r.time)}</td>
-          <td>${esc(r.model)}</td>
-          <td>${r.case_count}</td>
-          <td>${r.passed} / ${r.failed}</td>
-          ${rateCell(r.pass_rate)}
-          <td>${r.p95 != null ? r.p95.toFixed(2) + ' ms' : '—'}</td>
-        </tr>`).join('')}
+          <td>${modelCell}</td>
+          <td>${totalCell}</td>
+          <td>${pfCell}</td>
+          ${rateCellHtml}
+          <td>${p95Cell}</td>
+        </tr>`;
+      }).join('')}
     </table></div>`;
 }
 
@@ -809,11 +825,35 @@ def _load_reports():
             continue
         summary = (data.get("summary") or [{}])[0]
         m = re.search(r"\d{8}-\d{6}", p.stem)
+        # 横向报告一份文件含多个模型（summary 有多行）。若只暴露 summary[0]，
+        # 列表里整份报告会被显示成第一个模型（通常是被对照的 mock），
+        # 让人误以为「看不到 deepseek-pro」；这里额外给出 model_rows 供前端逐模型展示。
+        model_rows = [
+            {
+                "model": s.get("model", "?"),
+                "total": s.get("total", s.get("passed", 0) + s.get("failed", 0)),
+                "passed": s.get("passed", 0),
+                "failed": s.get("failed", 0),
+                "pass_rate": s.get("pass_rate", 0.0),
+                "p95": s.get("p95_latency_ms"),
+            }
+            for s in (data.get("summary") or [])
+            if isinstance(s, dict)
+        ] or [{
+            "model": summary.get("model", "?"),
+            "total": summary.get("total", 0),
+            "passed": summary.get("passed", 0),
+            "failed": summary.get("failed", 0),
+            "pass_rate": summary.get("pass_rate", 0.0),
+            "p95": summary.get("p95_latency_ms"),
+        }]
         items.append({
             "file": p.name,
             "time": (m.group(0) if m else data.get("started_at", "?")),
             "tag": p.stem.split("-")[0] if "-" in p.stem else "run",
             "model": summary.get("model", "?"),
+            "models": [row["model"] for row in model_rows],
+            "model_rows": model_rows,
             "case_count": data.get("case_count", 0),
             "passed": summary.get("passed", 0),
             "failed": summary.get("failed", 0),
