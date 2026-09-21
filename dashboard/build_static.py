@@ -42,7 +42,15 @@ def build(reports_dir: Path, out_dir: Path) -> int:
         json.dumps(tests_summary or {}, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}）")
+    # 测试详情（每条用例：classname/name/status/duration_s/message），可缺失
+    detail_src = app.REPORTS_DIR / "tests-detail.json"
+    if detail_src.is_file():
+        # 不重序列化：直接拷贝原文更高效（detail 数组可能数千行）
+        (out / "api" / "tests-detail.json").write_text(
+            detail_src.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+
+    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}{' + 用例详情' if detail_src.is_file() else ''}）")
     return len(reports)
 
 

@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from dashboard.app import _load_tests_summary
+from dashboard.app import _load_tests_summary, _load_tests_detail
 from dashboard.parse_junit import parse
 
 
@@ -124,6 +124,50 @@ def test_parse_failed_tests_capped_at_50(tmp_path: Path):
     assert len(parse(p)["failed_tests"]) == 50
 
 
+def test_detail_tests_full_listing(tmp_path: Path):
+    """detail_tests 字段：每条用例一条 dict，状态、文件名、用例名、message 都对得上。"""
+    # 构造一份较大的混合用例集（260 条），覆盖 pass/fail/skip/error 四态
+    cases = (
+        [_case_xml(f"p{i}") for i in range(250)]
+        + [_case_xml(f"f{i}", fail=True) for i in range(5)]
+        + [_case_xml(f"s{i}", skip=True) for i in range(3)]
+        + [_case_xml(f"e{i}", error=True) for i in range(2)]
+    )
+    p = _write_junit(tmp_path, total=260, failed=5, errors=2, skipped=3, cases=cases)
+    detail = parse(p)["detail_tests"]
+    assert isinstance(detail, list)
+    assert len(detail) == 260
+    sample = next(t for t in detail if t["status"] == "pass")
+    for k in ("classname", "name", "status", "duration_s"):
+        assert k in sample
+    assert sample["status"] == "pass"
+    assert isinstance(sample["duration_s"], (int, float))
+    # 失败用例要带 message（空字符串不算）
+    fail = next((t for t in detail if t["status"] == "fail"), None)
+    if fail is not None:
+        assert fail["message"] != ""
+
+
+def test_detail_tests_capped_at_5000(tmp_path: Path):
+    """detail_tests 上限 5000（防止巨大用例集撑爆看板详情页）。"""
+    cases = [_case_xml(f"p{i}") for i in range(6000)]
+    p = _write_junit(tmp_path, total=6000, cases=cases)
+    assert len(parse(p)["detail_tests"]) == 5000
+
+
+def test_detail_tests_includes_skip_and_error(tmp_path: Path):
+    """detail_tests 同时含 skip/error 状态（首页 summary 只展 fail/passed）。"""
+    cases = (
+        [_case_xml("p1")]
+        + [_case_xml("skip1", skip=True)]
+        + [_case_xml("err1", error=True)]
+    )
+    p = _write_junit(tmp_path, total=3, errors=1, skipped=1, cases=cases)
+    detail = parse(p)["detail_tests"]
+    statuses = [t["status"] for t in detail]
+    assert "pass" in statuses and "skip" in statuses and "error" in statuses
+
+
 def test_parse_meta_injection_merges_into_summary(tmp_path: Path):
     """外部传入 meta（branch/commit/run_url）会合并进返回 dict。"""
     p = _write_junit(tmp_path, total=1, cases=[_case_xml("ok")])
@@ -206,3 +250,29 @@ def test_load_tests_summary_returns_none_on_broken_json(tmp_path: Path, monkeypa
     monkeypatch.setattr(app, "REPORTS_DIR", tmp_path)
     (tmp_path / "tests-summary.json").write_text("{broken", encoding="utf-8")
     assert app._load_tests_summary() is None
+
+
+# ---------- _load_tests_detail()（看板端 helper，详尽页用） ----------
+
+def test_load_tests_detail_returns_none_when_missing(tmp_path: Path, monkeypatch):
+    """REPORTS_DIR 指向空目录时，_load_tests_detail 返回 None（不抛错）。"""
+    from dashboard import app
+    monkeypatch.setattr(app, "REPORTS_DIR", tmp_path)
+    assert app._load_tests_detail() is None
+
+
+def test_load_tests_detail_returns_dict_when_valid(tmp_path: Path, monkeypatch):
+    """REPORTS_DIR 有 tests-detail.json 时返回 dict。"""
+    from dashboard import app
+    monkeypatch.setattr(app, "REPORTS_DIR", tmp_path)
+    payload = {"total": 2, "tests": [{"classname": "x", "name": "t1", "status": "pass"}]}
+    (tmp_path / "tests-detail.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert app._load_tests_detail() == payload
+
+
+def test_load_tests_detail_returns_none_on_broken_json(tmp_path: Path, monkeypatch):
+    """JSON 损坏时降级为 None。"""
+    from dashboard import app
+    monkeypatch.setattr(app, "REPORTS_DIR", tmp_path)
+    (tmp_path / "tests-detail.json").write_text("{broken", encoding="utf-8")
+    assert app._load_tests_detail() is None

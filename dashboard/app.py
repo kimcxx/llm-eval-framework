@@ -280,6 +280,7 @@ async function renderList(reports) {
           </div>
         </div>
         ${tests.run_url ? `<a class="back" href="${esc(tests.run_url)}" target="_blank" rel="noopener">查看运行日志 →</a>` : ''}
+        <a class="back" href="#tests">查看用例详情 →</a>
       </div>
       ${tests.failed_tests && tests.failed_tests.length ? `
       <details style="margin-top:12px">
@@ -565,7 +566,126 @@ $drawerClose.addEventListener('click', closeDrawer);
 $drawerMask.addEventListener('click', closeDrawer);
 addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
-// 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总
+// 测试详情页（#tests）：每条 pytest 用例的状态/含义/耗时
+// 状态保存在模块顶层 closure，避免每次筛选都重算
+let _testsState = null;
+
+async function renderTests() {
+  const detail = await (await fetch('api/tests/detail.json')).json();
+  const summary = await (await fetch('api/tests.json')).json();
+  const tests = (detail && tests.tests) || [];
+  if (!tests.length) {
+    $app.innerHTML = `
+      <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+      <h1>测试详情</h1>
+      <div class="card"><div class="sub" style="margin:0">暂无测试详情（api/tests-detail.json 不存在）</div></div>`;
+    return;
+  }
+
+  // 文件（classname 前缀）去重 + 排序
+  const files = Array.from(new Set(tests.map(t => (t.classname || '').split('.')[0] || '(其他)'))).sort();
+  const summaryInfo = summary || {};
+
+  _testsState = { tests, files, summary: summaryInfo, filter: 'all', file: '', q: '' };
+
+  $app.innerHTML = `
+    <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+    <h1>测试详情</h1>
+    <div class="sub">
+      ${summaryInfo.generated_at ? `生成于 ${esc(summaryInfo.generated_at)} · ` : ''}
+      ${summaryInfo.total != null ? `${summaryInfo.total} 用例 · ` : ''}
+      ${summaryInfo.passed != null ? `${summaryInfo.passed} 通过 · ` : ''}
+      ${summaryInfo.failed != null ? `<span style="color:${summaryInfo.failed?'var(--bad)':'var(--muted)'}">${summaryInfo.failed} 失败</span> · ` : ''}
+      ${summaryInfo.errors != null ? `<span style="color:${summaryInfo.failed?'var(--bad)':'var(--muted)'}">${summaryInfo.errors} 异常</span> · ` : ''}
+      ${summaryInfo.skipped != null ? `${summaryInfo.skipped} 跳过 · ` : ''}
+      ${summaryInfo.duration_s != null ? `耗时 ${summaryInfo.duration_s}s` : ''}
+      ${summaryInfo.branch ? ` · 分支 <code>${esc(summaryInfo.branch)}</code>` : ''}
+      ${summaryInfo.commit ? ` · <code>${esc((summaryInfo.commit||'').slice(0,7))}</code>` : ''}
+      ${summaryInfo.run_url ? ` · <a class="back" href="${esc(summaryInfo.run_url)}" target="_blank" rel="noopener">查看运行日志 →</a>` : ''}
+    </div>
+    <div class="toolbar">
+      <select id="testsFilter">
+        <option value="all">全部状态</option>
+        <option value="pass">✓ 通过</option>
+        <option value="fail">✗ 失败</option>
+        <option value="error">⚠ 异常</option>
+        <option value="skip">— 跳过</option>
+      </select>
+      <select id="testsFile">
+        <option value="">全部文件</option>
+        ${files.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}
+      </select>
+      <input id="testsSearch" placeholder="搜索用例名 / 类名" />
+      <span class="stat-inline" id="testsCount"></span>
+    </div>
+    <div class="card"><table id="testsTable">
+      <tr><th style="width:80px">状态</th><th>文件</th><th>用例</th><th style="width:90px">耗时</th></tr>
+      <tbody id="testsBody"></tbody>
+    </table></div>
+    <div style="color:var(--muted);font-size:12px;margin-top:8px">点击行看完整错误信息（弹出抽屉）</div>`;
+
+  document.getElementById('testsFilter').addEventListener('change', e => { _testsState.filter = e.target.value; _renderTestsBody(); });
+  document.getElementById('testsFile').addEventListener('change', e => { _testsState.file = e.target.value; _renderTestsBody(); });
+  document.getElementById('testsSearch').addEventListener('input', e => { _testsState.q = e.target.value.toLowerCase(); _renderTestsBody(); });
+  _renderTestsBody();
+}
+
+function _renderTestsBody() {
+  const { tests, filter, file, q } = _testsState;
+  const rows = tests.filter(t => {
+    if (filter !== 'all' && t.status !== filter) return false;
+    if (file && (t.classname || '').split('.')[0] !== file) return false;
+    if (q && !(t.name || '').toLowerCase().includes(q) && !(t.classname || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  _testsState.filtered = rows;  // 抽屉查找时直接索引这里
+  document.getElementById('testsCount').textContent = `命中 ${rows.length} / ${tests.length} 条`;
+  const badge = s => `<span class="badge ${s==='pass'?'pass':s==='fail'?'fail':s==='skip'?'skip':''}">${s}</span>`;
+  document.getElementById('testsBody').innerHTML = rows.map((t, i) => `
+    <tr class="rowlink" data-i="${i}">
+      <td>${badge(t.status || '')}</td>
+      <td class="catname">${esc((t.classname || '').split('.')[0] || '')}</td>
+      <td><code>${esc(t.name || '')}</code>${t.message ? `<div class="err" style="font-size:12px;margin-top:4px">${esc(t.message.slice(0,160))}${t.message.length>160?'…':''}</div>` : ''}</td>
+      <td class="catname">${(t.duration_s || 0).toFixed(3)}s</td>
+    </tr>`).join('') || `<tr><td colspan="4" class="empty">无匹配用例</td></tr>`;
+  document.querySelectorAll('#testsBody tr.rowlink').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const idx = Number(tr.dataset.i);
+      _openTestDrawer(_testsState.filtered[idx] || null);
+    });
+  });
+}
+
+// 渲染抽屉（详情用同一个 drawer 组件）
+function _openTestDrawer(t) {
+  if (!t) return;
+  $drawerTitle.textContent = `${t.classname || ''}.${t.name || ''}`;
+  // 重置 badge 类名并更新文本（避免 outerHTML 丢引用）
+  $drawerBadge.className = `badge ${t.status === 'pass' ? 'pass' : t.status === 'fail' ? 'fail' : t.status === 'skip' ? 'skip' : ''}`;
+  $drawerBadge.textContent = t.status || '';
+  $drawerBody.innerHTML = `
+    <div class="drawer-section">
+      <h3>基本信息</h3>
+      <div class="info-row">
+        <span>文件：<b>${esc(t.classname || '')}</b></span>
+        <span>用例：<b><code>${esc(t.name || '')}</code></b></span>
+        <span>耗时：<b>${(t.duration_s || 0).toFixed(3)}s</b></span>
+      </div>
+    </div>
+    ${t.message ? `
+    <div class="drawer-section">
+      <h3>失败详情</h3>
+      <div class="mono scroll-box">${esc(t.message)}</div>
+    </div>` : `
+    <div class="drawer-section">
+      <h3>提示</h3>
+      <div class="sub" style="margin:0">该用例通过，未记录额外输出。</div>
+    </div>`}`;
+  $drawer.classList.add('open');
+  $drawerMask.classList.add('open');
+}
+
+// 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；#tests 看 pytest 用例详情
 async function main() {
   const hash = location.hash.slice(1);
   if (!hash) {
@@ -575,6 +695,7 @@ async function main() {
   }
   const [file, tab = 'summary'] = hash.split('/');
   if (!file) return renderList(await (await fetch('api/reports.json')).json());
+  if (file === 'tests') return renderTests();
   return renderDetail(decodeURIComponent(file), tab);
 }
 main();
@@ -624,6 +745,21 @@ def _load_tests_summary():
         return None
 
 
+def _load_tests_detail():
+    """读取 pytest 用例明细（dashboard/data/tests-detail.json）。
+
+    由 .github/workflows/cd.yml 的 "解析测试摘要" 步骤用 parse_junit --detail 写出。
+    文件不存在或读取失败返回 None（看板会显示空状态而非崩页）。
+    """
+    p = REPORTS_DIR / "tests-detail.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 class Handler(SimpleHTTPRequestHandler):
     def _json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -646,6 +782,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(_load_reports())
         elif path in ("/api/tests", "/api/tests.json"):
             self._json(_load_tests_summary() or {})
+        elif path in ("/api/tests/detail", "/api/tests/detail.json"):
+            self._json(_load_tests_detail() or {})
         elif path.startswith("/api/report/"):
             name = os.path.basename(path[len("/api/report/"):])
             fp = REPORTS_DIR / name
