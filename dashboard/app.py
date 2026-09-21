@@ -783,8 +783,27 @@ def _load_reports():
             "pass_rate": summary.get("pass_rate", 0.0),
             "p95": summary.get("p95_latency_ms"),
         })
-    items.sort(key=lambda x: x["time"], reverse=True)
+    items.sort(key=lambda x: _time_key(x["time"]), reverse=True)
     return items
+
+
+def _time_key(value: str):
+    """把各种 time 字符串转成 datetime，兼容文件名数字串与 ISO 字符串。"""
+    from datetime import datetime
+    candidate = str(value).strip()
+    if not candidate or candidate == "?":
+        return datetime.min
+    # 数字串 20260921-074502 → 当天时间
+    try:
+        return datetime.strptime(candidate, "%Y%m%d-%H%M%S")
+    except ValueError:
+        pass
+    # ISO 格式 2026-09-21T15:59:26
+    cleaned = candidate.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(cleaned)
+    except ValueError:
+        return datetime.min
 
 
 def _load_tests_summary():
