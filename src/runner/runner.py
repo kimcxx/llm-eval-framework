@@ -104,6 +104,7 @@ class EvalRunner:
             dataset=case.source,
             model=model_name,
             prompt=case.prompt,
+            dimension=case.dimension,
             expected=case.expected,
         )
 

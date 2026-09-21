@@ -216,6 +216,10 @@ const $drawerClose = document.getElementById('drawerClose');
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = x => (x * 100).toFixed(1) + '%';
+// 与后端 src/datasets/schema.py 的 DIMENSION_LABELS 保持一致
+const DIM_LABELS = {correctness:'正确性', instruction_following:'指令遵循', format:'格式合规',
+                    safety:'安全', robustness:'鲁棒性', knowledge:'知识时效', untagged:'未标注'};
+const dimLabel = d => d ? (DIM_LABELS[d] || d) : '未标注';
 const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(--bad)';
 const rateCell = x => `<td><div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div></td>`;
 
@@ -328,9 +332,40 @@ async function renderDetail(file, tab) {
   else renderSummaryTab(r);
 }
 
+// 维度通过率表：按 case 的 dimension 标签分组，未打标签的归入 untagged 一行。
+// 注：r.dimensions 为 {model: [{dimension,label,total,passed,failed,skipped,pass_rate}]}；
+// 老报告没有该字段，返回空串不渲染。
+function dimensionCard(r) {
+  const dims = r.dimensions || {};
+  const models = Object.keys(dims);
+  if (!models.length) return '';
+  const rows = models.flatMap(model => (dims[model] || []).map(d => {
+    const untagged = d.dimension === 'untagged';
+    return `
+      <tr${untagged ? ' style="opacity:.7"' : ''}>
+        <td>${esc(model)}</td>
+        <td><span class="badge">${esc(d.label || d.dimension)}</span>
+          ${untagged ? '<span class="catname" style="font-size:12px"> 未打标签</span>' : `<span class="catname" style="font-size:12px"> ${esc(d.dimension)}</span>`}</td>
+        <td>${d.passed} / ${d.total}${d.skipped ? ` <span class="catname">(跳过 ${d.skipped})</span>` : ''}</td>
+        ${rateCell(d.pass_rate)}
+      </tr>`;
+  })).join('');
+  return `
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px">维度通过率</div>
+      <div class="catname" style="font-size:12px;margin-bottom:10px">按用例的 <code>dimension</code> 标签分组；未打标签的用例归入「未标注」单独一行。标签只影响分组，不参与通过判定。</div>
+      <table>
+        <tr><th>模型</th><th>维度</th><th>通过 / 总数</th><th>通过率</th></tr>
+        ${rows || '<tr><td colspan="4" class="catname">（无数据）</td></tr>'}
+      </table>
+    </div>`;
+}
+
 // 汇总 tab（沿用原详情页）
 function renderSummaryTab(r) {
   const s = r.summary || [];
+  // categories 形如 {model: [ {category,...} ]}（dict 而非数组，需用 Object.* 遍历）
+  const catEntries = Object.entries(r.categories || {});
   document.getElementById('tabBody').innerHTML = `
     <div class="card">
       <div style="font-weight:600;margin-bottom:10px">模型总览</div>
@@ -348,21 +383,22 @@ function renderSummaryTab(r) {
           </tr>`).join('')}
       </table>
     </div>
-    ${(r.categories || {}).length ? `
+    ${catEntries.length ? `
     <div class="card">
       <div style="font-weight:600;margin-bottom:10px">分类通过率</div>
       <table>
         <tr><th>模型</th><th>分类</th><th>通过 / 总数</th><th>通过率</th></tr>
-        ${(r.categories || {}).flatMap ? (r.categories || {}).flatMap((rows, model) =>
-          rows.map(c => `
+        ${catEntries.flatMap(([model, rows]) =>
+          (rows || []).map(c => `
           <tr>
             <td>${esc(model)}</td>
             <td><span class="badge">${esc(c.category)}</span></td>
             <td>${c.passed} / ${c.total}</td>
             ${rateCell(c.pass_rate)}
-          </tr>`)).join('') : ''}
+          </tr>`)).join('')}
       </table>
     </div>` : ''}
+    ${dimensionCard(r)}
     ${(s[0] && s[0].metric_avg) ? `
     <div class="card">
       <div style="font-weight:600;margin-bottom:10px">指标均值（首个模型）</div>
@@ -531,6 +567,7 @@ function openDrawer(c) {
   $drawerBody.innerHTML = `
     <div class="info-row" style="margin-bottom:14px">
       <span>分类：<b>${esc(c.category || '（无）')}</b></span>
+      <span>维度：<b>${esc(dimLabel(c.dimension))}</b></span>
       <span>数据集：<b>${esc(c.dataset || '（无）')}</b></span>
       <span>模型：<b>${esc(c.model || '（无）')}</b></span>
     </div>

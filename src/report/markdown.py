@@ -16,7 +16,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from src.runner.results import EvalReport
+from src.runner.results import EvalReport, dimension_label
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -89,6 +89,25 @@ def _category_rows(report: EvalReport, model: str) -> list[dict[str, Any]]:
     return rows
 
 
+def _dimension_rows(report: EvalReport, model: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for stats in report.by_dimension(model):
+        rows.append(
+            {
+                "dimension": stats.key,
+                "label": dimension_label(stats.key),
+                "total": stats.total,
+                "passed": stats.passed,
+                "failed": stats.failed,
+                "skipped": stats.skipped,
+                "pass_rate": stats.pass_rate,
+                "avg_latency_ms": stats.avg_latency_ms,
+                "errors": stats.errors,
+            }
+        )
+    return rows
+
+
 def _failure_rows(report: EvalReport, model: str, limit: int = 15) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for case in report.failures(model, limit=limit):
@@ -112,6 +131,7 @@ def build_context(report: EvalReport) -> dict[str, Any]:
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "summary_rows": _summary_rows(report),
         "category_rows": {m: _category_rows(report, m) for m in report.models},
+        "dimension_rows": {m: _dimension_rows(report, m) for m in report.models},
         "failure_rows": {m: _failure_rows(report, m) for m in report.models},
         "skipped_metrics": report.skipped_metric_counts(),
         "metric_names": report.metric_names(),
@@ -169,6 +189,7 @@ def _write_csv(report: EvalReport, path: Path) -> None:
             "model": case.model,
             "dataset": case.dataset,
             "category": case.category,
+            "dimension": case.dimension or "untagged",
             "case_id": case.case_id,
             "passed": case.passed,
             "error": case.error,
@@ -192,7 +213,7 @@ def _write_csv_stdlib(report: EvalReport, path: Path) -> None:
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(
-            ["model", "dataset", "category", "case_id", "passed", "error", "latency_ms", "cost", "response"]
+            ["model", "dataset", "category", "dimension", "case_id", "passed", "error", "latency_ms", "cost", "response"]
         )
         for case in report.cases:
             writer.writerow(
@@ -200,6 +221,7 @@ def _write_csv_stdlib(report: EvalReport, path: Path) -> None:
                     case.model,
                     case.dataset,
                     case.category,
+                    case.dimension or "untagged",
                     case.case_id,
                     case.passed,
                     case.error or "",

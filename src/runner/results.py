@@ -9,6 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
+from src.datasets.schema import (
+    DIMENSION_LABELS,
+    DIMENSIONS,
+    UNTAGGED_DIMENSION,
+    UNTAGGED_DIMENSION_LABEL,
+)
 from src.metrics.base import MetricResult
 
 
@@ -21,6 +27,7 @@ class CaseResult:
     dataset: str
     model: str
     prompt: str
+    dimension: str | None = None
     response_text: str = ""
     expected: Any = None
     latency_ms: float = 0.0
@@ -58,6 +65,7 @@ class CaseResult:
             "category": self.category,
             "dataset": self.dataset,
             "model": self.model,
+            "dimension": self.dimension,
             "prompt": self.prompt,
             "expected": self.expected,
             "response": self.response_text,
@@ -138,6 +146,13 @@ class GroupStats:
         return sum(scores) / len(scores)
 
 
+def dimension_label(name: str) -> str:
+    """维度的展示名；untagged 显示为「未标注」，未知值原样返回。"""
+    if name == UNTAGGED_DIMENSION:
+        return UNTAGGED_DIMENSION_LABEL
+    return DIMENSION_LABELS.get(name, name)
+
+
 def percentile(values: Iterable[float], ratio: float) -> float:
     """线性插值分位数，避免为了一个 P95 引入 numpy 依赖。"""
     data = sorted(values)
@@ -207,6 +222,19 @@ class EvalReport:
         groups = group_by(subset, "category")
         return sorted(groups.values(), key=lambda g: g.key)
 
+    def by_dimension(self, model: str) -> list[GroupStats]:
+        """按能力维度统计；未打 dimension 标签的用例归入 untagged 组。
+
+        排序固定为枚举顺序，untagged 永远排在最后，便于跨报告横向对比。
+        """
+        subset = [c for c in self.cases if c.model == model]
+        groups = group_by(subset, lambda c: c.dimension or UNTAGGED_DIMENSION)
+        order = {name: index for index, name in enumerate(DIMENSIONS)}
+        return sorted(
+            groups.values(),
+            key=lambda g: (order.get(g.key, len(DIMENSIONS)), g.key),
+        )
+
     def metric_names(self) -> list[str]:
         names: list[str] = []
         for case in self.cases:
@@ -264,6 +292,22 @@ class EvalReport:
                         "pass_rate": round(stats.pass_rate, 4),
                     }
                     for stats in self.by_category(model)
+                ]
+                for model in self.models
+            },
+            # 按能力维度汇总；未打 dimension 标签的用例归入 untagged
+            "dimensions": {
+                model: [
+                    {
+                        "dimension": stats.key,
+                        "label": dimension_label(stats.key),
+                        "total": stats.total,
+                        "passed": stats.passed,
+                        "failed": stats.failed,
+                        "skipped": stats.skipped,
+                        "pass_rate": round(stats.pass_rate, 4),
+                    }
+                    for stats in self.by_dimension(model)
                 ]
                 for model in self.models
             },
