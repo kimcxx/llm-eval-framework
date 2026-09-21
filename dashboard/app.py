@@ -95,6 +95,154 @@ def diff_cases(curr_cases, base_cases):
     }
 
 
+# ============================== 顶部 banner 字段计算 ============================== #
+# 首页最顶部一行大字结论：「最新报告 <model> XX.X%，较上次 +/-X.X pt；
+# 回归 n 条 / 修复 m 条；最弱维度：<label> YY.Y%」。
+# 数据全部来自 api/reports.json + 已有的 diff_cases 逻辑，不加新接口。
+
+_BANNER_DIM_LABELS = {
+    'correctness': '正确性', 'instruction_following': '指令遵循', 'format': '格式合规',
+    'safety': '安全', 'robustness': '鲁棒性', 'knowledge': '知识时效', 'untagged': '未标注',
+}
+
+
+def _pick_representative_model(entry):
+    """从 model_rows 选 banner 代表模型：优先真实模型（名字不以 ``mock-`` 开头）。
+
+    横向评测的报告里通常有 ``mock-baseline`` 等对照组（可能多个 mock-*），
+    把对照组推到 banner 会让人误以为「真实模型怎么才 100%」，所以必须挑
+    真实模型。全 mock 时退到 ``entry['model']``；单模型报告 / 残缺数据
+    时同样退到 ``entry['model']``。
+    """
+    rows = entry.get('model_rows') or []
+    for row in rows:
+        if isinstance(row, dict) and row.get('model') and not row['model'].startswith('mock-'):
+            return row['model']
+    return entry.get('model', '?')
+
+
+def _representative_rate(entry, model):
+    """取代表模型在 entry 里的 pass_rate；找不到则降级到 entry.pass_rate。"""
+    for row in (entry.get('model_rows') or []):
+        if isinstance(row, dict) and row.get('model') == model:
+            return row.get('pass_rate', 0.0)
+    return entry.get('pass_rate', 0.0)
+
+
+def _weakest_dimension(doc, model):
+    """从报告里选「指定模型」的最弱 dimension / category。返回 ``(label, rate)`` 或 ``None``。
+
+    数据结构兼容（按优先级）：
+    1. ``dimensions``: ``dict[model] -> list[{dimension, label, ..., pass_rate}]``（runner 新输出）
+    2. ``categories``: ``dict[model] -> list[{category, total, passed, failed, pass_rate}]``（老格式 / dashboard/data）
+
+    两层都兼容：找不到时返回 ``None``，前端 banner 显示 "—" 而不崩。
+    ``untagged`` 不参与最弱选择（用户看不到意义），但全 ``untagged`` 时仍返回自身。
+    """
+    if not isinstance(doc, dict):
+        return None
+
+    # 1) dimensions 优先（runner 新输出）
+    dims = doc.get('dimensions')
+    candidates = None
+    if isinstance(dims, dict):
+        if model in dims and isinstance(dims[model], list):
+            candidates = dims[model]
+        else:
+            for v in dims.values():
+                if isinstance(v, list):
+                    candidates = v
+                    break
+    elif isinstance(dims, list):
+        candidates = dims
+
+    if candidates:
+        valid = [d for d in candidates if isinstance(d, dict) and d.get('dimension')]
+        if valid:
+            pool = [d for d in valid if d.get('dimension') != 'untagged'] or valid
+            weakest = min(pool, key=lambda d: d.get('pass_rate', 1.0))
+            label = _BANNER_DIM_LABELS.get(
+                weakest.get('dimension'),
+                weakest.get('label') or weakest.get('dimension'),
+            )
+            return (label, weakest.get('pass_rate', 0.0))
+
+    # 2) categories fallback（dashboard/data 老数据，runner 老版本）
+    cats = doc.get('categories')
+    candidates = None
+    if isinstance(cats, dict):
+        if model in cats and isinstance(cats[model], list):
+            candidates = cats[model]
+        else:
+            for v in cats.values():
+                if isinstance(v, list):
+                    candidates = v
+                    break
+    elif isinstance(cats, list):
+        candidates = cats
+
+    if candidates:
+        # 过滤 total=0 的空桶，避免被"尚未跑该 category"的零分拉低
+        valid = [
+            d for d in candidates
+            if isinstance(d, dict) and d.get('category') and d.get('total', 0) > 0
+        ]
+        if valid:
+            weakest = min(valid, key=lambda d: d.get('pass_rate', 1.0))
+            cat = weakest.get('category')
+            label = _BANNER_DIM_LABELS.get(cat, cat)
+            return (label, weakest.get('pass_rate', 0.0))
+
+    return None
+
+
+def compute_banner(curr_entry, curr_doc, base_entry=None, base_doc=None):
+    """计算 banner 字段。纯函数无副作用；供 Python 单测与前端 JS 共享契约。
+
+    入参：
+    - curr_entry: ``_load_reports()`` 返回的最新一项
+    - curr_doc: curr_entry.file 对应的完整报告 JSON（含 cases / dimensions / summary）
+    - base_entry / base_doc: 上一次报告的同名对象；可为 None
+
+    返回 dict，banner 直接消费：
+        ``model / curr_rate / base_rate / delta_pt / regressed / fixed /
+        weakest_label / weakest_rate / has_base``
+    """
+    model = _pick_representative_model(curr_entry)
+    curr_rate = _representative_rate(curr_entry, model)
+
+    base_rate = None
+    if base_entry:
+        # 上次报告里能精确匹配到代表模型才有"较上次"意义；找不到则 None，让 banner 显示 "—"
+        rows = base_entry.get('model_rows') or []
+        if any(isinstance(row, dict) and row.get('model') == model for row in rows):
+            base_rate = _representative_rate(base_entry, model)
+
+    delta_pt = (curr_rate - base_rate) * 100 if base_rate is not None else None
+
+    if base_doc and curr_doc and isinstance(base_doc, dict) and isinstance(curr_doc, dict):
+        diff = diff_cases(curr_doc.get('cases') or [], base_doc.get('cases') or [])
+        regressed = len(diff['regressed'])
+        fixed = len(diff['fixed'])
+    else:
+        regressed = 0
+        fixed = 0
+
+    weakest = _weakest_dimension(curr_doc, model) if isinstance(curr_doc, dict) else None
+
+    return {
+        'model': model,
+        'curr_rate': curr_rate,
+        'base_rate': base_rate,
+        'delta_pt': delta_pt,
+        'regressed': regressed,
+        'fixed': fixed,
+        'weakest_label': weakest[0] if weakest else None,
+        'weakest_rate': weakest[1] if weakest else None,
+        'has_base': base_entry is not None,
+    }
+
+
 PAGE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -112,6 +260,15 @@ PAGE = """<!DOCTYPE html>
   .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
   h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
   .sub { color: var(--muted); margin-bottom: 24px; }
+  /* 首页最顶部的"大字结论"横幅 */
+  .banner { background: linear-gradient(90deg, rgba(79,142,247,.14), rgba(79,142,247,.03));
+            border: 1px solid var(--border); border-left: 3px solid var(--accent);
+            border-radius: 10px; padding: 14px 20px; margin-bottom: 18px;
+            font-size: 15px; line-height: 1.75; }
+  .banner .big { font-size: 26px; font-weight: 700; }
+  .banner .delta-up { color: var(--ok); font-weight: 600; }
+  .banner .delta-down { color: var(--bad); font-weight: 600; }
+  .banner .delta-na { color: var(--muted); font-weight: 600; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -263,12 +420,121 @@ function diffCases(currCases, baseCases) {
   return {regressed, fixed, stillFailing, onlyInCurr, onlyInBase};
 }
 
+// 首页最顶部"大字结论"banner：复用现有 api/reports.json + api/report/{file}，不加新接口
+async function computeBannerData(reports) {
+  if (!reports || !reports.length) return null;
+  const curr = reports[0];
+  const base = reports[1] || null;
+
+  // 静默 fetch；失败让 banner 不显示而不是让首页崩
+  const safeFetchDoc = (entry) => entry
+    ? fetch('api/report/' + encodeURIComponent(entry.file))
+        .then(r => r && r.ok ? r.json() : null)
+        .catch(() => null)
+    : Promise.resolve(null);
+
+  const [currDoc, baseDoc] = await Promise.all([safeFetchDoc(curr), safeFetchDoc(base)]);
+
+  // 代表模型：优先真实模型（名字不以 mock- 开头）；全 mock / 无 model_rows 时退到 entry.model
+  const rows = curr.model_rows || [];
+  const real = rows.find(r => r && r.model && !r.model.startsWith('mock-'));
+  const representative = (real && real.model) || curr.model;
+
+  const repRateRow = rows.find(r => r && r.model === representative);
+  const currRate = (repRateRow && typeof repRateRow.pass_rate === 'number') ? repRateRow.pass_rate : curr.pass_rate;
+
+  // base 报告里能找到同一模型才算"较上次"，否则显示 "—"
+  let baseRate = null;
+  if (base) {
+    const baseRows = base.model_rows || [];
+    if (baseRows.some(r => r && r.model === representative)) {
+      const r = baseRows.find(x => x.model === representative);
+      baseRate = (r && typeof r.pass_rate === 'number') ? r.pass_rate : null;
+    }
+  }
+  const deltaPt = baseRate == null ? null : (currRate - baseRate) * 100;
+
+  // 跨次对比复用 diffCases（已有 helper）
+  const diff = (baseDoc && currDoc) ? diffCases(currDoc.cases || [], baseDoc.cases || []) : null;
+  const regressed = diff ? diff.regressed.length : 0;
+  const fixed = diff ? diff.fixed.length : 0;
+
+  // 最弱维度：dimensions 优先；dashboard/data 老报告只有 categories，兼容 fallback
+  let weakest = null;
+  if (currDoc) {
+    const findCandidates = (group) => {
+      if (!group) return null;
+      if (Array.isArray(group)) return group;
+      if (group[representative] && Array.isArray(group[representative])) return group[representative];
+      for (const v of Object.values(group)) {
+        if (Array.isArray(v)) return v;
+      }
+      return null;
+    };
+
+    // 1) dimensions 优先（runner 新输出）
+    const dimCands = findCandidates(currDoc.dimensions);
+    if (dimCands && dimCands.length) {
+      const valid = dimCands.filter(d => d && d.dimension);
+      const noUntagged = valid.filter(d => d.dimension !== 'untagged');
+      const pool = noUntagged.length ? noUntagged : valid;
+      if (pool.length) {
+        const w = pool.reduce((a, b) => (a.pass_rate <= b.pass_rate ? a : b));
+        weakest = { label: DIM_LABELS[w.dimension] || w.label || w.dimension, rate: w.pass_rate };
+      }
+    }
+
+    // 2) categories fallback（dashboard/data 老数据）
+    if (!weakest) {
+      const catCands = findCandidates(currDoc.categories);
+      if (catCands && catCands.length) {
+        // 过滤 total=0 的空桶
+        const valid = catCands.filter(d => d && d.category && (d.total || 0) > 0);
+        if (valid.length) {
+          const w = valid.reduce((a, b) => (a.pass_rate <= b.pass_rate ? a : b));
+          // DIM_LABELS 翻译优先（safety→安全 等），命中不了就原样输出 category 名
+          weakest = { label: DIM_LABELS[w.category] || w.category, rate: w.pass_rate };
+        }
+      }
+    }
+  }
+
+  return { model: representative, currRate, baseRate, deltaPt, regressed, fixed, weakest, hasBase: !!base };
+}
+
+function renderBanner(data) {
+  if (!data) return '';
+  const rateText = (data.currRate * 100).toFixed(1) + '%';
+  let deltaHtml;
+  if (data.deltaPt == null) {
+    deltaHtml = '<span class="delta-na">—</span>';
+  } else {
+    const cls = data.deltaPt > 0 ? 'delta-up' : (data.deltaPt < 0 ? 'delta-down' : 'delta-na');
+    const sign = data.deltaPt > 0 ? '+' : '';
+    deltaHtml = `<span class="${cls}">${sign}${data.deltaPt.toFixed(1)} pt</span>`;
+  }
+  const weakestHtml = data.weakest
+    ? `${esc(data.weakest.label)} <b>${(data.weakest.rate * 100).toFixed(1)}%</b>`
+    : '<span class="delta-na">—</span>';
+  return `
+    <div class="banner">
+      最新报告 <b style="color:var(--accent)">${esc(data.model)}</b>
+      <span class="big" style="color:${rateColor(data.currRate)}">${rateText}</span>
+      ，较上次 ${deltaHtml}
+      ；回归 <b style="color:var(--bad)">${data.regressed}</b> 条 / 修复 <b style="color:var(--ok)">${data.fixed}</b> 条
+      ；最弱维度：${weakestHtml}
+    </div>`;
+}
+
 // 渲染报告列表（首页）
 async function renderList(reports) {
   const tests = await (await fetch('api/tests.json')).json();
   const hasTests = tests && tests.total;
   const ciAllPass = hasTests && tests.failed === 0 && tests.errors === 0;
+  // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
+  const bannerData = await computeBannerData(reports);
   $app.innerHTML = `
+    ${bannerData ? renderBanner(bannerData) : ''}
     <h1>LLM 评测报告看板</h1>
     <div class="sub">共 ${reports.length} 份报告 · ${reports.reduce((a,r)=>a+r.case_count,0)} 个用例 · 最新 ${esc(reports[0].time)}</div>
     <div class="grid" style="margin-bottom:16px">
