@@ -571,9 +571,9 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 let _testsState = null;
 
 async function renderTests() {
-  const detail = await (await fetch('api/tests/detail.json')).json();
+  const detail = await (await fetch('api/tests-detail.json')).json();
   const summary = await (await fetch('api/tests.json')).json();
-  const tests = (detail && tests.tests) || [];
+  const tests = (detail && detail.tests) || [];
   if (!tests.length) {
     $app.innerHTML = `
       <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
@@ -709,6 +709,9 @@ def _load_reports():
     """扫描 reports/*.json，返回按时间倒序的元数据列表。"""
     items = []
     for p in sorted(REPORTS_DIR.glob("*.json")):
+        # CI 测试摘要/明细不是评测报告，不进列表（否则会出现 model=?/用例=0 的幽灵条目）
+        if p.name in ("tests-summary.json", "tests-detail.json"):
+            continue
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
@@ -782,7 +785,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(_load_reports())
         elif path in ("/api/tests", "/api/tests.json"):
             self._json(_load_tests_summary() or {})
-        elif path in ("/api/tests/detail", "/api/tests/detail.json"):
+        elif path in ("/api/tests/detail", "/api/tests/detail.json", "/api/tests-detail.json"):
             self._json(_load_tests_detail() or {})
         elif path.startswith("/api/report/"):
             name = os.path.basename(path[len("/api/report/"):])
