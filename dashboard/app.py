@@ -255,6 +255,9 @@ function diffCases(currCases, baseCases) {
 
 // 渲染报告列表（首页）
 async function renderList(reports) {
+  const tests = await (await fetch('api/tests.json')).json();
+  const hasTests = tests && tests.total;
+  const ciAllPass = hasTests && tests.failed === 0 && tests.errors === 0;
   $app.innerHTML = `
     <h1>LLM 评测报告看板</h1>
     <div class="sub">共 ${reports.length} 份报告 · ${reports.reduce((a,r)=>a+r.case_count,0)} 个用例 · 最新 ${esc(reports[0].time)}</div>
@@ -264,6 +267,29 @@ async function renderList(reports) {
       <div class="stat"><div class="k">最新通过率</div><div class="v" style="color:${rateColor(reports[0].pass_rate)}">${pct(reports[0].pass_rate)}</div></div>
       <div class="stat"><div class="k">最新模型</div><div class="v" style="font-size:15px">${esc(reports[0].model)}</div></div>
     </div>
+    ${hasTests ? `
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap">
+        <div>
+          <div style="font-weight:600; margin-bottom:4px">CI 测试 <span class="badge ${ciAllPass?'pass':'fail'}">${ciAllPass?'全绿':(tests.failed+tests.errors)+' 失败'}</span></div>
+          <div class="sub" style="margin-bottom:0">
+            ${tests.total} 用例 · ${tests.passed} 通过 · ${tests.failed} 失败 · ${tests.errors} 异常 · ${tests.skipped} 跳过 · 耗时 ${tests.duration_s}s
+            <span class="catname"> · 生成于 ${esc(tests.generated_at || '')}</span>
+            ${tests.branch ? `<span class="catname"> · 分支 <code>${esc(tests.branch)}</code></span>` : ''}
+            ${tests.commit ? `<span class="catname"> · <code>${esc((tests.commit||'').slice(0,7))}</code></span>` : ''}
+          </div>
+        </div>
+        ${tests.run_url ? `<a class="back" href="${esc(tests.run_url)}" target="_blank" rel="noopener">查看运行日志 →</a>` : ''}
+      </div>
+      ${tests.failed_tests && tests.failed_tests.length ? `
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">${tests.failed_tests.length} 条失败明细</summary>
+        <div class="mono scroll-box" style="margin-top:10px; max-height:240px">
+          ${tests.failed_tests.map(t => `<div style="padding:4px 0; border-bottom:1px solid rgba(42,54,80,.4)"><span style="color:var(--bad)">✗</span> <code>${esc(t.classname)}.${esc(t.name)}</code>${t.message ? `<div style="color:var(--muted); margin-left:22px; margin-top:2px">${esc(t.message.slice(0,300))}${t.message.length>300?'…':''}</div>` : ''}</div>`).join('')}
+        </div>
+      </details>` : ''}
+    </div>` : `
+    <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>通过率</th><th>P95 延迟</th></tr>
       ${reports.map((r, i) => `
@@ -583,6 +609,21 @@ def _load_reports():
     return items
 
 
+def _load_tests_summary():
+    """读取 CI 生成的 pytest 摘要（dashboard/data/tests-summary.json）。
+
+    由 .github/workflows/cd.yml 的 "解析测试摘要" 步骤生成，零依赖。
+    文件不存在或读取失败返回 None（看板会显示空状态而非崩页）。
+    """
+    p = REPORTS_DIR / "tests-summary.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 class Handler(SimpleHTTPRequestHandler):
     def _json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -603,6 +644,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
         elif path in ("/api/reports", "/api/reports.json"):
             self._json(_load_reports())
+        elif path in ("/api/tests", "/api/tests.json"):
+            self._json(_load_tests_summary() or {})
         elif path.startswith("/api/report/"):
             name = os.path.basename(path[len("/api/report/"):])
             fp = REPORTS_DIR / name
