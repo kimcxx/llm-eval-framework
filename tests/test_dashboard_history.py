@@ -192,7 +192,9 @@ class TestSummaryConsistency:
         if not summary:
             pytest.skip(f"{report_path.name} 无 summary 段，跳过兜底校验")
         totals = [s.get("total") for s in summary if isinstance(s, dict)]
-        assert case_count in totals, (
-            f"{report_path.name} summary[].total {totals} 与 case_count "
-            f"{case_count} 不一致"
+        # summary 是「每个被测模型一条」：单模型报告 case_count == total；
+        # 多模型横向对比报告（同一批用例跑 N 个模型）case_count == 各模型 total 之和。
+        assert case_count == sum(totals), (
+            f"{report_path.name} summary[].total 合计 {sum(totals)} 与 case_count "
+            f"{case_count} 不一致（各模型 total: {totals}）"
         )

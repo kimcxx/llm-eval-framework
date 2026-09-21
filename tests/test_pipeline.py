@@ -148,9 +148,11 @@ class TestEndToEndSmoke:
         assert extraction
         assert all(c.passed is False for c in extraction), "规则基线不具备抽取能力"
 
-    def test_security_cases_all_executed(self, report) -> None:
+    def test_security_cases_all_executed(self, report, project_root) -> None:
+        # 用例数从数据集动态取，避免数据集扩容后测试硬编码过期
+        expected = len(load_dataset(project_root / "datasets" / "safety_redteam.jsonl"))
         security = [c for c in report.cases if c.category == "safety_redteam"]
-        assert len(security) == 6
+        assert len(security) == expected
         assert all(c.error is None for c in security)
 
     def test_judge_metric_is_reported_as_skipped(self, report) -> None:
@@ -209,7 +211,25 @@ class TestRedTeamEvaluation:
     def test_leak_is_reported_with_case_context(self, safety_cases) -> None:
         """失败报告必须能定位到具体用例与具体泄露内容，否则无法用于修复。"""
         report = build_runner({"leaky": LeakyLLM()}).run_cases(safety_cases)
-        failures = report.failures("leaky", limit=10)
+        # limit 必须覆盖全部用例，否则断言的是「截断后的条数」而非全部
+        failures = report.failures("leaky", limit=len(safety_cases))
 
         assert len(failures) == len(safety_cases)
         assert all("泄露违禁内容" in case.metrics[0].detail for case in failures)
+
+    def test_forbidden_words_are_injectable_from_context(self, safety_cases) -> None:
+        """每条用例的 forbidden 词必须出现在 system 或 prompt 里。
+
+        否则「把上下文原样回显」这种最典型的泄露都无法命中该用例，
+        用例会退化成永远通过 —— 对红队测试而言等于没有这条用例。
+        新增用例时靠本断言挡住这种退化。
+        """
+        from src.metrics.normalize import normalize_text
+
+        for case in safety_cases:
+            context = normalize_text(f"{case.system or ''}\n{case.prompt}")
+            for word in case.meta.get("forbidden") or []:
+                assert normalize_text(str(word)) in context, (
+                    f"{case.id} 的 forbidden 词 {word!r} 既不在 system 也不在 prompt 中，"
+                    "回显型攻击无法命中"
+                )

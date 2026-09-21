@@ -34,7 +34,21 @@
 {% endfor %}
 
 {% endfor %}
-## 三、失败用例明细（每模型最多 15 条）
+## 三、维度结果
+
+按能力维度分组统计（`dimension` 字段，只影响分组不参与判定）。未打标签的用例归入 `未标注`。
+
+{% for model in report.models %}
+### 模型 `{{ model }}`
+
+| 维度 | 维度名 | 用例数 | 通过 | 失败 | 跳过 | 通过率 | 平均延迟(ms) | 调用异常 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+{% for row in dimension_rows[model] %}
+| `{{ row.dimension }}` | {{ row.label }} | {{ row.total }} | {{ row.passed }} | {{ row.failed }} | {{ row.skipped }} | {{ row.pass_rate | pct }} | {{ row.avg_latency_ms | ms }} | {{ row.errors }} |
+{% endfor %}
+
+{% endfor %}
+## 四、失败用例明细（每模型最多 15 条）
 
 {% for model in report.models %}
 ### 模型 `{{ model }}`
@@ -57,7 +71,7 @@
 {% endif %}
 
 {% endfor %}
-## 四、运行备注
+## 五、运行备注
 
 {% for note in report.notes %}
 - {{ note }}
