@@ -22,6 +22,79 @@ if not REPORTS_DIR.is_dir():
     REPORTS_DIR = ROOT / "reports"
 PORT = int(os.environ.get("PORT", "8080"))
 
+# ============================== 模块顶层 helper（供 tester 单测 / Python 调用） ============================== #
+
+
+def case_status(c):
+    """单条用例状态：'pass' / 'fail' / 'skip'。
+
+    判定规则（与前端 JS `statusOf` 保持一致）：
+    - c.error 非空 → 'skip'
+    - c.passed 为 True → 'pass'
+    - 其余 → 'fail'
+
+    参数 c 为 dict（来自 report.json 的 cases[]），缺字段安全降级。
+    """
+    if not isinstance(c, dict):
+        return 'fail'
+    if c.get('error'):
+        return 'skip'
+    if c.get('passed') is True:
+        return 'pass'
+    return 'fail'
+
+
+def diff_cases(curr_cases, base_cases):
+    """跨次对比：按 case_id 字符串排序后比较 passed 状态变化。
+
+    返回 dict：
+    - regressed: 上次通过 → 这次失败（list[{curr, base}]）
+    - fixed:     上次失败 → 这次通过（list[{curr, base}]）
+    - stillFailing: 两次都失败（list[{curr, base}]）
+    - onlyInCurr:   当前报告独有（list[curr]）
+    - onlyInBase:   基线报告独有（list[base]）
+
+    入参允许 None / list；空入参返回全空分组，绝不抛错。
+    """
+    curr = list(curr_cases or [])
+    base = list(base_cases or [])
+    curr_map = {c.get('case_id'): c for c in curr if isinstance(c, dict) and c.get('case_id') is not None}
+    base_map = {c.get('case_id'): c for c in base if isinstance(c, dict) and c.get('case_id') is not None}
+    all_ids = sorted(set(curr_map) | set(base_map))
+
+    def _find(arr, cid):
+        for x in arr:
+            if isinstance(x, dict) and x.get('case_id') == cid:
+                return x
+        return None
+
+    regressed, fixed, still_failing = [], [], []
+    only_in_curr, only_in_base = [], []
+    for cid in all_ids:
+        cur = _find(curr, cid)
+        b = _find(base, cid)
+        if cur is not None and b is None:
+            only_in_curr.append(cur)
+            continue
+        if b is not None and cur is None:
+            only_in_base.append(b)
+            continue
+        cs, bs = case_status(cur), case_status(b)
+        if bs == 'pass' and cs != 'pass':
+            regressed.append({'curr': cur, 'base': b})
+        elif bs != 'pass' and cs == 'pass':
+            fixed.append({'curr': cur, 'base': b})
+        elif cs != 'pass':
+            still_failing.append({'curr': cur, 'base': b})
+    return {
+        'regressed': regressed,
+        'fixed': fixed,
+        'stillFailing': still_failing,
+        'onlyInCurr': only_in_curr,
+        'onlyInBase': only_in_base,
+    }
+
+
 PAGE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -50,6 +123,9 @@ PAGE = """<!DOCTYPE html>
   .bar { position: relative; background: #232d47; border-radius: 5px; height: 8px; width: 130px; overflow: hidden; }
   .bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
   .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: var(--panel2); color: var(--muted); }
+  .badge.pass { background: rgba(52,201,142,.18); color: var(--ok); }
+  .badge.fail { background: rgba(240,86,106,.18); color: var(--bad); }
+  .badge.skip { background: rgba(245,180,73,.18); color: var(--warn); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
   .stat { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
   .stat .k { color: var(--muted); font-size: 12px; }
@@ -58,37 +134,140 @@ PAGE = """<!DOCTYPE html>
   .back:hover { text-decoration: underline; }
   .catname { color: var(--muted); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
+
+  /* 标签页导航 */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab { padding: 8px 16px; color: var(--muted); cursor: pointer; border: none; background: none;
+         font: inherit; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .12s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* 用例列表工具栏 */
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .toolbar select, .toolbar input { background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 10px; border-radius: 6px; font: inherit; }
+  .toolbar input { min-width: 220px; }
+  .toolbar .stat-inline { color: var(--muted); margin-left: auto; font-size: 12px; }
+
+  /* 行底色（用于跨次对比） */
+  tr.row-regressed td { background: rgba(240,86,106,.18); }
+  tr.row-regressed:hover td { background: rgba(240,86,106,.30); }
+  tr.row-fixed td { background: rgba(52,201,142,.18); }
+  tr.row-fixed:hover td { background: rgba(52,201,142,.30); }
+
+  /* 等宽 / 可滚动文本块 */
+  .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+          white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+  .scroll-box { max-height: 320px; overflow: auto; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+
+  /* 抽屉（用例详情） */
+  .drawer-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50;
+                  opacity: 0; pointer-events: none; transition: opacity .18s; }
+  .drawer-mask.open { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(720px, 96vw);
+            background: var(--panel); border-left: 1px solid var(--border); z-index: 51;
+            transform: translateX(100%); transition: transform .22s ease-out;
+            display: flex; flex-direction: column; }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head { padding: 14px 18px; border-bottom: 1px solid var(--border);
+                  display: flex; align-items: center; gap: 10px; }
+  .drawer-head h2 { font-size: 16px; font-weight: 600; flex: 1; word-break: break-all; }
+  .drawer-body { flex: 1; overflow: auto; padding: 18px 20px; }
+  .drawer-close { background: none; border: 1px solid var(--border); color: var(--text);
+                   width: 30px; height: 30px; border-radius: 6px; cursor: pointer;
+                   font-size: 16px; line-height: 1; }
+  .drawer-close:hover { background: var(--panel2); }
+  .drawer-section { margin-bottom: 18px; }
+  .drawer-section h3 { font-size: 13px; color: var(--muted); margin-bottom: 8px; font-weight: 500; }
+  .err { color: var(--bad); }
+  .info-row { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+  .info-row span b { color: var(--text); font-weight: 500; }
+
+  /* 小屏：drawer 全屏，工具栏单列 */
+  @media (max-width: 640px) {
+    .drawer { width: 100vw; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input { min-width: 0; width: 100%; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap" id="app"><div class="empty">加载中…</div></div>
+<div class="drawer-mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true">
+  <div class="drawer-head">
+    <h2 id="drawerTitle">case</h2>
+    <span id="drawerBadge"></span>
+    <button class="drawer-close" id="drawerClose" aria-label="关闭">×</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
 <script>
 const $app = document.getElementById('app');
+const $drawer = document.getElementById('drawer');
+const $drawerMask = document.getElementById('drawerMask');
+const $drawerTitle = document.getElementById('drawerTitle');
+const $drawerBadge = document.getElementById('drawerBadge');
+const $drawerBody = document.getElementById('drawerBody');
+const $drawerClose = document.getElementById('drawerClose');
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = x => (x * 100).toFixed(1) + '%';
 const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(--bad)';
 const rateCell = x => `<td><div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div></td>`;
 
-async function main() {
-  const hash = location.hash.slice(1);
-  if (hash) return showDetail(decodeURIComponent(hash));
-  const reports = await (await fetch('api/reports.json')).json();
-  if (!reports.length) { $app.innerHTML = '<div class="empty">reports/ 目录下暂无报告，先跑一次评测 runner 吧。</div>'; return; }
-  const best = Math.max(...reports.map(r => r.case_count));
-  const totalCases = reports.reduce((a, r) => a + r.case_count, 0);
+// 把任意 Python/JSON 值渲染成 HTML（dict/list 原样展示，str 保留换行）
+const formatAny = v => {
+  if (v === null || v === undefined) return '<span class="catname">（空）</span>';
+  if (typeof v === 'string') return esc(v);
+  if (typeof v === 'number' || typeof v === 'boolean') return esc(String(v));
+  try { return esc(JSON.stringify(v, null, 2)); } catch (_) { return esc(String(v)); }
+};
+
+// 单条用例的状态：pass / fail / skip
+function statusOf(c) {
+  if (c.error) return 'skip';
+  if (c.passed === true) return 'pass';
+  return 'fail';
+}
+
+// 跨次对比：按 case_id 字符串排序
+function diffCases(currCases, baseCases) {
+  const byId = (arr, id) => (arr || []).find(x => x.case_id === id);
+  const ids = new Set();
+  (currCases || []).forEach(c => ids.add(c.case_id));
+  (baseCases || []).forEach(c => ids.add(c.case_id));
+  const allIds = Array.from(ids).sort();
+  const regressed = [], fixed = [], stillFailing = [], onlyInCurr = [], onlyInBase = [];
+  for (const id of allIds) {
+    const cur = byId(currCases, id);
+    const base = byId(baseCases, id);
+    if (cur && !base) { onlyInCurr.push(cur); continue; }
+    if (base && !cur) { onlyInBase.push(base); continue; }
+    const cs = statusOf(cur), bs = statusOf(base);
+    if (bs === 'pass' && cs !== 'pass') regressed.push({curr: cur, base});
+    else if (bs !== 'pass' && cs === 'pass') fixed.push({curr: cur, base});
+    else if (cs !== 'pass') stillFailing.push({curr: cur, base});
+  }
+  return {regressed, fixed, stillFailing, onlyInCurr, onlyInBase};
+}
+
+// 渲染报告列表（首页）
+async function renderList(reports) {
   $app.innerHTML = `
     <h1>LLM 评测报告看板</h1>
-    <div class="sub">共 ${reports.length} 份报告 · ${totalCases} 个用例 · 最新 ${esc(reports[0].time)}</div>
+    <div class="sub">共 ${reports.length} 份报告 · ${reports.reduce((a,r)=>a+r.case_count,0)} 个用例 · 最新 ${esc(reports[0].time)}</div>
     <div class="grid" style="margin-bottom:16px">
       <div class="stat"><div class="k">报告数</div><div class="v">${reports.length}</div></div>
-      <div class="stat"><div class="k">单次最多用例</div><div class="v">${best}</div></div>
+      <div class="stat"><div class="k">单次最多用例</div><div class="v">${Math.max(...reports.map(r=>r.case_count))}</div></div>
       <div class="stat"><div class="k">最新通过率</div><div class="v" style="color:${rateColor(reports[0].pass_rate)}">${pct(reports[0].pass_rate)}</div></div>
       <div class="stat"><div class="k">最新模型</div><div class="v" style="font-size:15px">${esc(reports[0].model)}</div></div>
     </div>
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>通过率</th><th>P95 延迟</th></tr>
       ${reports.map((r, i) => `
-        <tr class="rowlink" onclick="location.hash='${encodeURIComponent(r.file)}'">
+        <tr class="rowlink" onclick="location.hash='${encodeURIComponent(r.file)}/summary'">
           <td>#${reports.length - i} <span class="badge">${r.tag || 'run'}</span></td>
           <td class="catname">${esc(r.time)}</td>
           <td>${esc(r.model)}</td>
@@ -100,15 +279,30 @@ async function main() {
     </table></div>`;
 }
 
-async function showDetail(file) {
+// 渲染详情页框架（标题 + tabs + 当前 tab 内容）
+async function renderDetail(file, tab) {
   const r = await (await fetch('/api/report/' + encodeURIComponent(file))).json();
-  const s = r.summary || [];
   $app.innerHTML = `
     <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
     <h1>${esc(file)}</h1>
     <div class="sub">${esc(r.started_at || '')} · ${r.case_count} 用例 · ${((r.duration_s ?? 0)).toFixed(2)}s
       · 数据集：${esc((r.datasets || []).join(', '))}</div>
     ${r.notes && r.notes.length ? `<div class="card" style="color:var(--muted);font-size:13px">备注：${esc(r.notes.join('；'))}</div>` : ''}
+    <div class="tabs" id="tabs">
+      ${[['summary','汇总'],['cases','用例列表'],['diff','跨次对比']].map(([k,name]) =>
+        `<a class="tab ${k===tab?'active':''}" href="#${encodeURIComponent(file)}/${k}">${name}</a>`).join('')}
+    </div>
+    <div id="tabBody"></div>`;
+  const body = document.getElementById('tabBody');
+  if (tab === 'cases') renderCasesTab(r, file);
+  else if (tab === 'diff') renderDiffTab(r, file);
+  else renderSummaryTab(r);
+}
+
+// 汇总 tab（沿用原详情页）
+function renderSummaryTab(r) {
+  const s = r.summary || [];
+  document.getElementById('tabBody').innerHTML = `
     <div class="card">
       <div style="font-weight:600;margin-bottom:10px">模型总览</div>
       <table>
@@ -149,6 +343,213 @@ async function showDetail(file) {
           <td><span class="bar" style="width:220px"><i style="width:${(v*100).toFixed(1)}%;background:${rateColor(v)}"></i></span></td></tr>`).join('')}
       </table>
     </div>` : ''}`;
+}
+
+// 用例列表 tab：表格 + 工具栏（状态筛选 / 分类下拉 / 搜索）+ 点击行打开抽屉
+function renderCasesTab(r, file) {
+  const cases = (r.cases || []).slice().sort((a, b) => String(a.case_id).localeCompare(String(b.case_id)));
+  const cats = Array.from(new Set(cases.map(c => c.category || '（无）'))).sort();
+  let state = {status: 'all', category: 'all', q: ''};
+
+  const draw = () => {
+    const filtered = cases.filter(c => {
+      if (state.status !== 'all' && statusOf(c) !== state.status) return false;
+      if (state.category !== 'all' && (c.category || '（无）') !== state.category) return false;
+      if (state.q && !String(c.case_id).toLowerCase().includes(state.q.toLowerCase())) return false;
+      return true;
+    });
+    document.getElementById('tabBody').innerHTML = `
+      <div class="toolbar">
+        <select id="fltStatus">
+          <option value="all" ${state.status==='all'?'selected':''}>全部状态</option>
+          <option value="pass" ${state.status==='pass'?'selected':''}>通过</option>
+          <option value="fail" ${state.status==='fail'?'selected':''}>失败</option>
+          <option value="skip" ${state.status==='skip'?'selected':''}>跳过</option>
+        </select>
+        <select id="fltCat">
+          <option value="all" ${state.category==='all'?'selected':''}>全部分类</option>
+          ${cats.map(c => `<option value="${esc(c)}" ${state.category===c?'selected':''}>${esc(c)}</option>`).join('')}
+        </select>
+        <input id="fltQ" placeholder="搜索 case_id（模糊匹配）" value="${esc(state.q)}">
+        <span class="stat-inline">共 ${cases.length} 条 · 筛选后 ${filtered.length}</span>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+        <table>
+          <tr><th>状态</th><th>case_id</th><th>分类</th><th>模型</th><th>P95 延迟归一</th><th>tokens</th></tr>
+          ${filtered.map(c => {
+            const st = statusOf(c);
+            const tok = (c.prompt_tokens || 0) + (c.completion_tokens || 0);
+            const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
+            return `
+            <tr class="rowlink" onclick="openDrawer(casesById.get('${esc(c.case_id)}'))">
+              <td><span class="badge ${st}">${st==='pass'?'✓':st==='fail'?'✗':'-'}</span></td>
+              <td>${esc(c.case_id)}</td>
+              <td><span class="badge">${esc(c.category || '（无）')}</span></td>
+              <td>${esc(c.model || '')}</td>
+              <td>${lat}</td>
+              <td>${tok || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>`;
+    document.getElementById('fltStatus').onchange = e => { state.status = e.target.value; draw(); };
+    document.getElementById('fltCat').onchange = e => { state.category = e.target.value; draw(); };
+    document.getElementById('fltQ').oninput = e => { state.q = e.target.value; draw(); };
+  };
+  // 用例 id → case 映射（用于行点击打开 drawer）
+  window.casesById = new Map(cases.map(c => [c.case_id, c]));
+  draw();
+}
+
+// 跨次对比 tab：选基线 → diffCases → 三个分组表格（行点击复用 drawer）
+async function renderDiffTab(r, file) {
+  const reports = await (await fetch('api/reports.json')).json();
+  // 基线默认选「最近一次更早的报告」（reports 按时间倒序，当前 reports[0] 是当前查看的）
+  const currIdx = reports.findIndex(x => x.file === file);
+  const candidates = reports.filter(x => x.file !== file && x.time < (reports[currIdx]?.time || ''));
+  const defaultBase = candidates[0]?.file || '';
+  const baseSel = document.createElement('select');
+  baseSel.id = 'baseSel';
+  baseSel.style.cssText = 'background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font:inherit';
+  baseSel.innerHTML = `<option value="">（请选择基线）</option>` +
+    reports.filter(x => x.file !== file).map(x =>
+      `<option value="${esc(x.file)}" ${x.file===defaultBase?'selected':''}>${esc(x.time)} · ${esc(x.model)} · ${esc(x.file)}</option>`
+    ).join('');
+  document.getElementById('tabBody').innerHTML = `
+    <div class="toolbar">
+      <span style="color:var(--muted)">基线报告：</span>
+      <span id="baseWrap"></span>
+      <span class="stat-inline" id="diffStat"></span>
+    </div>
+    <div id="diffBody"></div>`;
+  document.getElementById('baseWrap').appendChild(baseSel);
+  baseSel.onchange = () => runDiff();
+
+  async function runDiff() {
+    const baseFile = baseSel.value;
+    if (!baseFile) {
+      document.getElementById('diffBody').innerHTML = '<div class="empty">请选择一份基线报告</div>';
+      document.getElementById('diffStat').textContent = '';
+      return;
+    }
+    const base = await (await fetch('/api/report/' + encodeURIComponent(baseFile))).json();
+    const d = diffCases(r.cases || [], base.cases || []);
+    window.casesById = new Map((r.cases || []).map(c => [c.case_id, c]));
+    const renderGroup = (title, color, rows, label) => {
+      if (!rows.length) return `<div class="card"><div style="font-weight:600;margin-bottom:10px">${esc(title)} <span class="badge" style="margin-left:6px">0</span></div><div class="catname" style="padding:8px 0">无</div></div>`;
+      return `
+        <div class="card">
+          <div style="font-weight:600;margin-bottom:10px">${esc(title)} <span class="badge ${color}" style="margin-left:6px">${rows.length}</span></div>
+          <table>
+            <tr><th>状态变化</th><th>case_id</th><th>分类</th><th>模型</th><th>基线</th><th>当前</th></tr>
+            ${rows.map(row => {
+              const cur = row.curr || row, base = row.base;
+              const cs = statusOf(cur), bs = base ? statusOf(base) : '—';
+              return `
+              <tr class="rowlink ${color}" onclick="openDrawer(casesById.get('${esc(cur.case_id)}'))">
+                <td><span class="badge ${color}">${esc(label)}</span></td>
+                <td>${esc(cur.case_id)}</td>
+                <td><span class="badge">${esc(cur.category || '（无）')}</span></td>
+                <td>${esc(cur.model || '')}</td>
+                <td><span class="badge ${bs}">${bs==='pass'?'✓':bs==='fail'?'✗':bs==='skip'?'-':'-'}</span></td>
+                <td><span class="badge ${cs}">${cs==='pass'?'✓':cs==='fail'?'✗':'-'}</span></td>
+              </tr>`;
+            }).join('')}
+          </table>
+        </div>`;
+    };
+    document.getElementById('diffBody').innerHTML = `
+      ${(d.onlyInCurr.length || d.onlyInBase.length) ? `
+        <div class="card" style="border-color:var(--warn)">
+          <div style="font-weight:600;margin-bottom:6px">⚠ 用例集合不一致</div>
+          <div class="catname" style="font-size:13px">
+            当前独有 ${d.onlyInCurr.length} 条 · 基线独有 ${d.onlyInBase.length} 条
+            ${d.onlyInCurr.length ? '· 当前独有：' + d.onlyInCurr.slice(0,5).map(c=>esc(c.case_id)).join(', ') + (d.onlyInCurr.length>5?' …':'') : ''}
+            ${d.onlyInBase.length ? '· 基线独有：' + d.onlyInBase.slice(0,5).map(c=>esc(c.case_id)).join(', ') + (d.onlyInBase.length>5?' …':'') : ''}
+          </div>
+        </div>` : ''}
+      ${renderGroup('回退完成（上次通过 → 这次失败）', 'fail', d.regressed, '回归')}
+      ${renderGroup('修复完成（上次失败 → 这次通过）', 'pass', d.fixed, '修复')}
+      ${renderGroup('仍失败（两次都失败）', 'fail', d.stillFailing, '未变')}`;
+    document.getElementById('diffStat').textContent =
+      `回归 ${d.regressed.length} · 修复 ${d.fixed.length} · 仍失败 ${d.stillFailing.length}`;
+  }
+  if (defaultBase) runDiff();
+}
+
+// 抽屉：显示用例完整详情
+function openDrawer(c) {
+  if (!c) return;
+  const st = statusOf(c);
+  const tok = (c.prompt_tokens || 0) + (c.completion_tokens || 0);
+  $drawerTitle.textContent = c.case_id;
+  $drawerBadge.innerHTML = `<span class="badge ${st}">${st==='pass'?'通过':st==='fail'?'失败':'跳过'}</span>`;
+  $drawerBody.innerHTML = `
+    <div class="info-row" style="margin-bottom:14px">
+      <span>分类：<b>${esc(c.category || '（无）')}</b></span>
+      <span>数据集：<b>${esc(c.dataset || '（无）')}</b></span>
+      <span>模型：<b>${esc(c.model || '（无）')}</b></span>
+    </div>
+    <div class="drawer-section">
+      <h3>prompt</h3>
+      <div class="scroll-box mono">${esc(c.prompt || '')}</div>
+    </div>
+    <div class="drawer-section">
+      <h3>expected</h3>
+      <div class="scroll-box mono">${formatAny(c.expected)}</div>
+    </div>
+    <div class="drawer-section">
+      <h3>response</h3>
+      <div class="scroll-box mono">${esc(c.response || '')}</div>
+    </div>
+    ${c.error ? `
+    <div class="drawer-section">
+      <h3>error</h3>
+      <div class="scroll-box mono err">${esc(c.error)}</div>
+    </div>` : ''}
+    <div class="drawer-section">
+      <h3>指标 (${(c.metrics||[]).length})</h3>
+      ${(c.metrics||[]).length ? `
+        <table>
+          <tr><th>指标</th><th>score</th><th>通过</th><th>详情</th></tr>
+          ${c.metrics.map(m => `
+            <tr>
+              <td><span class="badge">${esc(m.name)}</span></td>
+              <td>${m.score != null ? pct(m.score) : '—'}</td>
+              <td><span class="badge ${m.passed?'pass':'fail'}">${m.passed?'✓':'✗'}</span></td>
+              <td style="white-space:normal">${esc(m.detail || '')}</td>
+            </tr>`).join('')}
+        </table>` : '<div class="catname">（无）</div>'}
+      ${(c.skipped_metrics||[]).length ? `
+        <div class="catname" style="margin-top:8px;font-size:12px">跳过：${esc((c.skipped_metrics||[]).join(', '))}</div>` : ''}
+    </div>
+    <div class="info-row" style="margin-top:6px">
+      <span>延迟：<b>${c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—'}</b></span>
+      <span>tokens：<b>${tok || '—'}</b>（prompt ${c.prompt_tokens ?? 0} / completion ${c.completion_tokens ?? 0}）</span>
+      <span>成本：<b>${c.cost != null ? c.cost : '—'}</b></span>
+    </div>`;
+  $drawer.classList.add('open');
+  $drawerMask.classList.add('open');
+}
+function closeDrawer() {
+  $drawer.classList.remove('open');
+  $drawerMask.classList.remove('open');
+}
+$drawerClose.addEventListener('click', closeDrawer);
+$drawerMask.addEventListener('click', closeDrawer);
+addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+// 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总
+async function main() {
+  const hash = location.hash.slice(1);
+  if (!hash) {
+    const reports = await (await fetch('api/reports.json')).json();
+    if (!reports.length) { $app.innerHTML = '<div class="empty">reports/ 目录下暂无报告，先跑一次评测 runner 吧。</div>'; return; }
+    return renderList(reports);
+  }
+  const [file, tab = 'summary'] = hash.split('/');
+  if (!file) return renderList(await (await fetch('api/reports.json')).json());
+  return renderDetail(decodeURIComponent(file), tab);
 }
 main();
 addEventListener('hashchange', () => main());
