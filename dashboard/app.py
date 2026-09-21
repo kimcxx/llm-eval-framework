@@ -588,6 +588,15 @@ let _testsState = null;
 async function renderTests() {
   const detail = await (await fetch('api/tests-detail.json')).json();
   const summary = await (await fetch('api/tests.json')).json();
+  // 最新评测报告（用于跳「用例列表」看评测输入输出）
+  let latestReport = '';
+  try {
+    const reports = await (await fetch('api/reports.json')).json();
+    latestReport = (reports && reports[0] && reports[0].file) || '';
+  } catch (e) {}
+  const evalLink = latestReport
+    ? `<a class="back" href="#${encodeURIComponent(latestReport)}/cases">看评测输入/输出（用例列表）→</a>`
+    : '';
   const tests = (detail && detail.tests) || [];
   if (!tests.length) {
     $app.innerHTML = `
@@ -601,11 +610,14 @@ async function renderTests() {
   const files = Array.from(new Set(tests.map(t => (t.classname || '').split('.')[0] || '(其他)'))).sort();
   const summaryInfo = summary || {};
 
-  _testsState = { tests, files, summary: summaryInfo, filter: 'all', file: '', q: '' };
+  _testsState = { tests, files, summary: summaryInfo, filter: 'all', file: '', q: '', latestReport };
 
   $app.innerHTML = `
     <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
-    <h1>测试详情</h1>
+    <h1>测试详情 <span class="sub" style="font-size:13px;font-weight:400">（pytest 框架单测）</span></h1>
+    <div class="sub">
+      本页是框架自身的单元测试。要看的<b>评测输入 / 模型输出</b>在这里：${evalLink || '（暂无评测报告）'}
+    </div>
     <div class="sub">
       ${summaryInfo.generated_at ? `生成于 ${esc(summaryInfo.generated_at)} · ` : ''}
       ${summaryInfo.total != null ? `${summaryInfo.total} 用例 · ` : ''}
@@ -694,7 +706,7 @@ function _openTestDrawer(t) {
     </div>` : `
     <div class="drawer-section">
       <h3>说明</h3>
-      <div class="sub" style="margin:0">pytest 单元测试通过。这是<b>框架自身的质量测试</b>，不含评测输入输出——想看每条评测用例的 prompt / 期望输出 / 模型实际输出，请到报告的「用例列表」页。</div>
+      <div class="sub" style="margin:0">pytest 单元测试通过。这是<b>框架自身的质量测试</b>，不含评测输入输出——评测的 prompt / 期望输出 / 模型实际输出请看 ${_testsState.latestReport ? `<a class="back" href="#${encodeURIComponent(_testsState.latestReport)}/cases">最新报告的用例列表 →</a>` : '报告的「用例列表」页'}。</div>
     </div>`}`;
   $drawer.classList.add('open');
   $drawerMask.classList.add('open');
