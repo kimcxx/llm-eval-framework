@@ -377,15 +377,30 @@ function renderCasesTab(r, file) {
   const cases = (r.cases || []).slice().sort((a, b) => String(a.case_id).localeCompare(String(b.case_id)));
   const cats = Array.from(new Set(cases.map(c => c.category || '（无）'))).sort();
   let state = {status: 'all', category: 'all', q: ''};
+  // 单行预览：压平换行 + 截断（promptfoo 式列表直接可见输入/输出摘要）
+  const prev = (s, n) => {
+    if (s == null) return '';
+    const t = String(s).replace(/\s+/g, ' ').trim();
+    return t.length > n ? t.slice(0, n) + '…' : t;
+  };
 
   const draw = () => {
     const filtered = cases.filter(c => {
       if (state.status !== 'all' && statusOf(c) !== state.status) return false;
       if (state.category !== 'all' && (c.category || '（无）') !== state.category) return false;
-      if (state.q && !String(c.case_id).toLowerCase().includes(state.q.toLowerCase())) return false;
+      if (state.q) {
+        const q = state.q.toLowerCase();
+        const hay = String(c.case_id) + ' ' + String(c.prompt || '') + ' ' + String(c.response || '');
+        if (!hay.toLowerCase().includes(q)) return false;
+      }
       return true;
     });
     document.getElementById('tabBody').innerHTML = `
+      <div class="sub" style="margin-bottom:10px">
+        数据流：<code>datasets/*.jsonl</code>（每行 = 一条评测用例：输入 + 期望输出）
+        → runner 调模型 → 按分类打分 → <code>report.json</code> 的 <code>cases[]</code> → 本页。
+        每行展示<b>输入 / 模型输出</b>摘要，点行看完整 prompt、期望输出、评分明细。
+      </div>
       <div class="toolbar">
         <select id="fltStatus">
           <option value="all" ${state.status==='all'?'selected':''}>全部状态</option>
@@ -397,24 +412,24 @@ function renderCasesTab(r, file) {
           <option value="all" ${state.category==='all'?'selected':''}>全部分类</option>
           ${cats.map(c => `<option value="${esc(c)}" ${state.category===c?'selected':''}>${esc(c)}</option>`).join('')}
         </select>
-        <input id="fltQ" placeholder="搜索 case_id（模糊匹配）" value="${esc(state.q)}">
+        <input id="fltQ" placeholder="搜索 case_id / 输入 / 输出内容" value="${esc(state.q)}">
         <span class="stat-inline">共 ${cases.length} 条 · 筛选后 ${filtered.length}</span>
       </div>
       <div class="card" style="padding:0;overflow:auto">
         <table>
-          <tr><th>状态</th><th>case_id</th><th>分类</th><th>模型</th><th>P95 延迟归一</th><th>tokens</th></tr>
+          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:80px">延迟</th></tr>
           ${filtered.map(c => {
             const st = statusOf(c);
-            const tok = (c.prompt_tokens || 0) + (c.completion_tokens || 0);
             const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
+            const failMetric = (c.metrics || []).find(m => m.passed === false);
             return `
             <tr class="rowlink" onclick="openDrawer(casesById.get('${esc(c.case_id)}'))">
               <td><span class="badge ${st}">${st==='pass'?'✓':st==='fail'?'✗':'-'}</span></td>
-              <td>${esc(c.case_id)}</td>
+              <td><code>${esc(c.case_id)}</code></td>
+              <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.prompt, 80))}</td>
+              <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.response, 80))}${st==='fail' && failMetric ? `<div class="err" style="font-size:12px;margin-top:3px">${esc(prev(failMetric.detail || failMetric.name, 60))}</div>` : ''}</td>
               <td><span class="badge">${esc(c.category || '（无）')}</span></td>
-              <td>${esc(c.model || '')}</td>
               <td>${lat}</td>
-              <td>${tok || '—'}</td>
             </tr>`;
           }).join('')}
         </table>
@@ -678,8 +693,8 @@ function _openTestDrawer(t) {
       <div class="mono scroll-box">${esc(t.message)}</div>
     </div>` : `
     <div class="drawer-section">
-      <h3>提示</h3>
-      <div class="sub" style="margin:0">该用例通过，未记录额外输出。</div>
+      <h3>说明</h3>
+      <div class="sub" style="margin:0">pytest 单元测试通过。这是<b>框架自身的质量测试</b>，不含评测输入输出——想看每条评测用例的 prompt / 期望输出 / 模型实际输出，请到报告的「用例列表」页。</div>
     </div>`}`;
   $drawer.classList.add('open');
   $drawerMask.classList.add('open');
