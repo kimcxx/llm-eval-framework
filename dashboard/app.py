@@ -119,6 +119,8 @@ PAGE = """<!DOCTYPE html>
   tr:last-child td { border-bottom: none; }
   tr.rowlink { cursor: pointer; transition: background .15s; }
   tr.rowlink:hover { background: var(--panel2); }
+  .errbox { background: rgba(240,86,106,.15); border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; word-break: break-all; }
+  .errbox b { color: var(--bad); }
   .rate { font-weight: 600; }
   .bar { position: relative; background: #232d47; border-radius: 5px; height: 8px; width: 130px; overflow: hidden; }
   .bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
@@ -294,7 +296,7 @@ async function renderList(reports) {
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>通过率</th><th>P95 延迟</th></tr>
       ${reports.map((r, i) => `
-        <tr class="rowlink" onclick="location.hash='${encodeURIComponent(r.file)}/summary'">
+        <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
           <td>#${reports.length - i} <span class="badge">${r.tag || 'run'}</span></td>
           <td class="catname">${esc(r.time)}</td>
           <td>${esc(r.model)}</td>
@@ -308,7 +310,7 @@ async function renderList(reports) {
 
 // 渲染详情页框架（标题 + tabs + 当前 tab 内容）
 async function renderDetail(file, tab) {
-  const r = await (await fetch('/api/report/' + encodeURIComponent(file))).json();
+  const r = await (await fetch('api/report/' + encodeURIComponent(file))).json();
   $app.innerHTML = `
     <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
     <h1>${esc(file)}</h1>
@@ -423,7 +425,7 @@ function renderCasesTab(r, file) {
             const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
             const failMetric = (c.metrics || []).find(m => m.passed === false);
             return `
-            <tr class="rowlink" onclick="openDrawer(casesById.get('${esc(c.case_id)}'))">
+            <tr class="rowlink" data-case="${esc(c.case_id)}">
               <td><span class="badge ${st}">${st==='pass'?'✓':st==='fail'?'✗':'-'}</span></td>
               <td><code>${esc(c.case_id)}</code></td>
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.prompt, 80))}</td>
@@ -474,7 +476,7 @@ async function renderDiffTab(r, file) {
       document.getElementById('diffStat').textContent = '';
       return;
     }
-    const base = await (await fetch('/api/report/' + encodeURIComponent(baseFile))).json();
+    const base = await (await fetch('api/report/' + encodeURIComponent(baseFile))).json();
     const d = diffCases(r.cases || [], base.cases || []);
     window.casesById = new Map((r.cases || []).map(c => [c.case_id, c]));
     const renderGroup = (title, color, rows, label) => {
@@ -488,7 +490,7 @@ async function renderDiffTab(r, file) {
               const cur = row.curr || row, base = row.base;
               const cs = statusOf(cur), bs = base ? statusOf(base) : '—';
               return `
-              <tr class="rowlink ${color}" onclick="openDrawer(casesById.get('${esc(cur.case_id)}'))">
+              <tr class="rowlink ${color}" data-case="${esc(cur.case_id)}">
                 <td><span class="badge ${color}">${esc(label)}</span></td>
                 <td>${esc(cur.case_id)}</td>
                 <td><span class="badge">${esc(cur.category || '（无）')}</span></td>
@@ -712,18 +714,43 @@ function _openTestDrawer(t) {
   $drawerMask.classList.add('open');
 }
 
+// 全局错误兜底：把未捕获错误显示到页面顶部，避免「点不开/无反应」静默失败
+function _showError(msg) {
+  const banner = `<div class="errbox"><b>运行错误：</b>${esc(String(msg))}<div style="margin-top:6px;color:var(--muted);font-size:12px">按 F12 打开控制台可看堆栈。请截图给我以便定位。</div></div>`;
+  // 插到 $app 顶部；不要清空原内容
+  const tmp = document.createElement('div');
+  tmp.innerHTML = banner;
+  $app.prepend(tmp.firstChild);
+}
+addEventListener('error', e => _showError(e.message || (e.error && e.error.message) || 'unknown'));
+addEventListener('unhandledrejection', e => _showError((e.reason && (e.reason.message || e.reason)) || 'unknown'));
+
+// 行点击改事件委托：避开内联 onclick + 反引号 template literal 替换的引号转义陷阱
+$app.addEventListener('click', e => {
+  const trGo = e.target.closest && e.target.closest('tr.rowlink[data-go]');
+  if (trGo) { location.hash = trGo.dataset.go; return; }
+  const trCase = e.target.closest && e.target.closest('tr.rowlink[data-case]');
+  if (trCase) { openDrawer(window.casesById.get(trCase.dataset.case)); return; }
+});
+
 // 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；#tests 看 pytest 用例详情
 async function main() {
   const hash = location.hash.slice(1);
-  if (!hash) {
-    const reports = await (await fetch('api/reports.json')).json();
-    if (!reports.length) { $app.innerHTML = '<div class="empty">reports/ 目录下暂无报告，先跑一次评测 runner 吧。</div>'; return; }
-    return renderList(reports);
+  try {
+    if (!hash) {
+      const reports = await (await fetch('api/reports.json')).json();
+      if (!reports.length) { $app.innerHTML = '<div class="empty">reports/ 目录下暂无报告，先跑一次评测 runner 吧。</div>'; return; }
+      return renderList(reports);
+    }
+    const [file, tab = 'summary'] = hash.split('/');
+    if (!file) return renderList(await (await fetch('api/reports.json')).json());
+    if (file === 'tests') return renderTests();
+    return renderDetail(decodeURIComponent(file), tab);
+  } catch (e) {
+    _showError(`main() 失败：${e.message || e}\n（hash="${hash}", file="${hash.split('/')[0]}", tab="${hash.split('/')[2] || 'summary'}"）`);
+    // 退回报告列表，避免白屏
+    try { return renderList(await (await fetch('api/reports.json')).json()); } catch (e2) { _showError(`连报告列表都拉不到：${e2.message || e2}`); }
   }
-  const [file, tab = 'summary'] = hash.split('/');
-  if (!file) return renderList(await (await fetch('api/reports.json')).json());
-  if (file === 'tests') return renderTests();
-  return renderDetail(decodeURIComponent(file), tab);
 }
 main();
 addEventListener('hashchange', () => main());
@@ -801,6 +828,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = unquote(self.path)
+        # 兼容前端相对路径（GitHub Pages 子路径下绝对路径会 404）：浏览器发起
+        # 的相对请求 `api/...` 在 HTTPServer 里通常带有前导斜杠，但偶尔（如某些
+        # 反代）会缺，统一补成 `/api/...`。
+        if path.startswith("api/"):
+            path = "/" + path
         if path == "/" or path == "/index.html":
             body = PAGE.encode("utf-8")
             self.send_response(200)
