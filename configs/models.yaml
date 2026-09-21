@@ -30,6 +30,19 @@ models:
     price_per_1k_input: 0.0005
     price_per_1k_output: 0.001
 
+  # ---------------- DeepSeek v4-pro（同账号，比 flash 贵 4 倍）---------------- #
+  # name 字段是 CLI 引用名（--models deepseek-pro），跟 deepseek-chat 区分
+  - name: deepseek-pro
+    provider: openai_compat
+    model: deepseek-v4-pro
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com/v1
+    temperature: 0.0
+    max_tokens: 1024
+    # v4-pro 价格按官方页输入（更新成本请同步 DeepSeek 定价页）
+    price_per_1k_input: 0.002
+    price_per_1k_output: 0.003
+
   # ---------------- 通义千问（阿里云百炼兼容模式）---------------- #
   - name: qwen-plus
     provider: openai_compat
