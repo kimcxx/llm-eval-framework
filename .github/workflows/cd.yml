@@ -37,7 +37,15 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: 全量测试（发布门禁）
-        run: pytest -q
+        run: pytest -q --junit-xml=tests-junit.xml
+
+      - name: 解析测试摘要（看板 CI 卡片用）
+        run: |
+          mkdir -p dashboard/data
+          python dashboard/parse_junit.py tests-junit.xml --out dashboard/data/tests-summary.json
+          echo "::group::tests-summary.json"
+          cat dashboard/data/tests-summary.json
+          echo "::endgroup::"
 
       - name: 跑一次评测生成最新报告
         run: python scripts/run_eval.py --models mock-baseline --no-embedding --tag cd

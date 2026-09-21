@@ -35,7 +35,14 @@ def build(reports_dir: Path, out_dir: Path) -> int:
         (out / "api" / "report" / item["file"]).write_text(
             json.dumps(data, ensure_ascii=False), encoding="utf-8"
         )
-    print(f"静态站点已生成: {out}（{len(reports)} 份报告）")
+
+    # CI 测试摘要（CD 流水线的 "解析测试摘要" 步骤生成），可缺失
+    tests_summary = app._load_tests_summary()
+    (out / "api" / "tests.json").write_text(
+        json.dumps(tests_summary or {}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}）")
     return len(reports)
 
 
