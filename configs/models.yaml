@@ -17,15 +17,18 @@ models:
     price_per_1k_output: 0.0
 
   # ---------------- DeepSeek ---------------- #
+  # 注：DeepSeek 平台现在下架了老的 deepseek-chat，只剩 flash 和 v4-pro
+  # 这里的 model 字段是「实际调用时传给 API 的名字」，必须与账号可用列表一致
   - name: deepseek-chat
     provider: openai_compat
-    model: deepseek-chat
+    model: deepseek-flash
     api_key_env: DEEPSEEK_API_KEY
     base_url: https://api.deepseek.com/v1
     temperature: 0.0
     max_tokens: 1024
-    price_per_1k_input: 0.001
-    price_per_1k_output: 0.002
+    # flash 官方价：输入 ¥0.5/M，输出 ¥1/M（每千 token = 元 ÷ 1000）
+    price_per_1k_input: 0.0005
+    price_per_1k_output: 0.001
 
   # ---------------- 通义千问（阿里云百炼兼容模式）---------------- #
   - name: qwen-plus
@@ -52,6 +55,7 @@ models:
 # ============================================================
 # 裁判模型（LLM-as-a-Judge）
 # 数据集里用到 "judge" 指标时会调用它，留空则自动跳过 judge 指标
+# 同样要改成账号里实际存在的模型（deepseek-flash）
 # ============================================================
 judge_model: deepseek-chat
 
