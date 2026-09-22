@@ -117,6 +117,41 @@ _BANNER_DIM_LABELS = {
 }
 
 
+def _is_mock(name):
+    """是否为对照组模型（``mock-*``）。
+
+    mock-baseline 这类是阴性对照：它的分数低是设计使然，不是被测模型的能力，
+    所以凡是「挑一个模型出来给人看」的场合（banner / 最弱维度 / 结论排名）
+    都要把它排除掉，全是对照组时才退回。
+    """
+    return str(name or '').startswith('mock-')
+
+
+def _candidates_for(group, model):
+    """从 ``dict[model] -> list`` 里挑一组候选行。
+
+    优先指定模型；指定模型缺席时跳过 ``mock-*`` 对照组，避免把对照组的
+    分数当成被测模型的结论展示出来。全是 mock 的报告（如 CD 冒烟）才退回任意一组。
+    """
+    if group is None:
+        return None
+    if isinstance(group, list):
+        return group
+    if not isinstance(group, dict):
+        return None
+
+    own = group.get(model)
+    if isinstance(own, list):
+        return own
+    for key, value in group.items():
+        if isinstance(value, list) and not _is_mock(key):
+            return value
+    for value in group.values():
+        if isinstance(value, list):
+            return value
+    return None
+
+
 def _pick_representative_model(entry):
     """从 model_rows 选 banner 代表模型：优先真实模型（名字不以 ``mock-`` 开头）。
 
@@ -127,7 +162,7 @@ def _pick_representative_model(entry):
     """
     rows = entry.get('model_rows') or []
     for row in rows:
-        if isinstance(row, dict) and row.get('model') and not row['model'].startswith('mock-'):
+        if isinstance(row, dict) and row.get('model') and not _is_mock(row['model']):
             return row['model']
     return entry.get('model', '?')
 
@@ -149,23 +184,13 @@ def _weakest_dimension(doc, model):
 
     两层都兼容：找不到时返回 ``None``，前端 banner 显示 "—" 而不崩。
     ``untagged`` 不参与最弱选择（用户看不到意义），但全 ``untagged`` 时仍返回自身。
+    ``mock-*`` 是对照组：只在没有真实模型可挑时才参与（详见 ``_candidates_for``）。
     """
     if not isinstance(doc, dict):
         return None
 
     # 1) dimensions 优先（runner 新输出）
-    dims = doc.get('dimensions')
-    candidates = None
-    if isinstance(dims, dict):
-        if model in dims and isinstance(dims[model], list):
-            candidates = dims[model]
-        else:
-            for v in dims.values():
-                if isinstance(v, list):
-                    candidates = v
-                    break
-    elif isinstance(dims, list):
-        candidates = dims
+    candidates = _candidates_for(doc.get('dimensions'), model)
 
     if candidates:
         valid = [d for d in candidates if isinstance(d, dict) and d.get('dimension')]
@@ -179,18 +204,7 @@ def _weakest_dimension(doc, model):
             return (label, weakest.get('pass_rate', 0.0))
 
     # 2) categories fallback（dashboard/data 老数据，runner 老版本）
-    cats = doc.get('categories')
-    candidates = None
-    if isinstance(cats, dict):
-        if model in cats and isinstance(cats[model], list):
-            candidates = cats[model]
-        else:
-            for v in cats.values():
-                if isinstance(v, list):
-                    candidates = v
-                    break
-    elif isinstance(cats, list):
-        candidates = cats
+    candidates = _candidates_for(doc.get('categories'), model)
 
     if candidates:
         # 过滤 total=0 的空桶，避免被"尚未跑该 category"的零分拉低
@@ -317,7 +331,7 @@ def _conclusion_anomalies(report):
     cats = report.get('categories')
     real_models = {
         r.get('model') for r in (report.get('summary') or [])
-        if isinstance(r, dict) and not str(r.get('model', '')).startswith('mock-')
+        if isinstance(r, dict) and not _is_mock(r.get('model'))
     }
     worst_by_cat = {}
     pairs = cats.items() if isinstance(cats, dict) else []
@@ -357,8 +371,11 @@ def compute_conclusion(report):
         return {'rank': [], 'judge': None, 'anomalies': [], 'text': '本报告无汇总数据'}
 
     rows = [r for r in (report.get('summary') or []) if isinstance(r, dict)]
+    # mock-* 是对照组，不进通过率排名：结论句里出现「mock-baseline 34.7%」会让人
+    # 以为被测模型里有个 34.7% 的。全是 mock 的报告才退回所有模型，避免排名为空。
+    ranked_rows = [r for r in rows if not _is_mock(r.get('model'))] or rows
     rank = sorted(
-        [{'model': r.get('model', '?'), 'pass_rate': r.get('pass_rate', 0.0)} for r in rows],
+        [{'model': r.get('model', '?'), 'pass_rate': r.get('pass_rate', 0.0)} for r in ranked_rows],
         key=lambda x: -(x['pass_rate'] or 0.0),
     )
     judge = _parse_judge_model(report)
@@ -618,14 +635,17 @@ async function computeBannerData(reports) {
   // 最弱维度：dimensions 优先；dashboard/data 老报告只有 categories，兼容 fallback
   let weakest = null;
   if (currDoc) {
+    // 与后端 _candidates_for 同契约：指定模型缺席时跳过 mock-* 对照组，
+    // 全是 mock 的报告才退回任意一组，两边口径必须一致。
     const findCandidates = (group) => {
       if (!group) return null;
       if (Array.isArray(group)) return group;
       if (group[representative] && Array.isArray(group[representative])) return group[representative];
-      for (const v of Object.values(group)) {
-        if (Array.isArray(v)) return v;
-      }
-      return null;
+      const entries = Object.entries(group);
+      const real = entries.find(([k, v]) => Array.isArray(v) && !String(k).startsWith('mock-'));
+      if (real) return real[1];
+      const any = entries.find(([, v]) => Array.isArray(v));
+      return any ? any[1] : null;
     };
 
     // 1) dimensions 优先（runner 新输出）
