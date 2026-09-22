@@ -89,7 +89,11 @@ class EvalRunner:
             models=models,
             datasets=sorted({c.source for c in cases}),
             cases=results,
-            notes=self.factory.notes() + self.extra_notes,
+            # 只披露本轮跑到的分类相关的口径，避免输出没跑的分类（如只跑 json_extract 却提 qa_open）
+            notes=self.factory.notes(
+                active_categories={c.category for c in cases}
+            )
+            + self.extra_notes,
             config_path=self.config_path,
         )
 

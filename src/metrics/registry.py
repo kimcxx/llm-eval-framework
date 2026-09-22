@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Iterable, Sequence
 
 from src.llm.base import BaseLLM
 from src.metrics.base import BaseMetric, MetricResult
@@ -132,8 +132,14 @@ class MetricFactory:
         detail = f"{result.detail}（仅记录，不参与通过判定：该分类由 judge 判定）".strip()
         return MetricResult(result.name, result.score, None, detail)
 
-    def notes(self) -> list[str]:
-        """披露本次评测实际生效的指标实现，避免「静默降级」。"""
+    def notes(self, active_categories: Iterable[str] | None = None) -> list[str]:
+        """披露本次评测实际生效的指标实现，避免「静默降级」。
+
+        active_categories 是本轮真正跑到的分类。给了就只披露与之相关的口径：
+        judge_only_categories 是全局配置，只跑 json_extract 的报告不该出现
+        「分类 qa_open 仅由 judge 判定」——那会让人以为这轮跑过 qa_open。
+        不传（None）表示不过滤，保持「配置全貌」口径。
+        """
         notes: list[str] = []
 
         # 本轮真正用到（已实例化）的指标才披露定义与阈值，避免噪声
@@ -149,8 +155,12 @@ class MetricFactory:
         else:
             notes.append("未配置可用裁判模型，judge 指标已被跳过")
 
-        if self.judge_only_categories:
-            names = "、".join(sorted(self.judge_only_categories))
+        involved = self.judge_only_categories
+        if involved and active_categories is not None:
+            ran = {str(c).strip().lower() for c in active_categories if str(c).strip()}
+            involved = involved & ran
+        if involved:
+            names = "、".join(sorted(involved))
             notes.append(f"分类 {names} 仅由 judge 判定，同用例其它指标只记录不判定")
 
         return notes

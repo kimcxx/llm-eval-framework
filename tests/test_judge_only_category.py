@@ -167,3 +167,47 @@ class TestDisclosure:
     def test_no_note_when_policy_empty(self) -> None:
         factory = MetricFactory(judge_client=None, judge_only_categories=())
         assert not factory.is_judge_only("qa_open")
+
+    def test_note_omitted_when_category_not_run(self) -> None:
+        """只跑 json_extract 的报告不该出现「qa_open 仅由 judge 判定」。"""
+        factory = MetricFactory(judge_client=judge_returning(5), judge_only_categories=JUDGE_ONLY)
+        notes = factory.notes(active_categories=["json_extract"])
+
+        assert not any("qa_open" in note for note in notes)
+        assert any("裁判模型" in note for note in notes)  # 其它口径照常披露
+
+    def test_note_kept_when_category_ran(self) -> None:
+        factory = MetricFactory(judge_client=judge_returning(5), judge_only_categories=JUDGE_ONLY)
+        assert any("qa_open" in note for note in factory.notes(active_categories=["qa_open"]))
+
+    def test_active_categories_matched_case_insensitively(self) -> None:
+        """分类名大小写/空格不一致也要能匹配上。"""
+        factory = MetricFactory(judge_client=judge_returning(5), judge_only_categories=JUDGE_ONLY)
+        notes = factory.notes(active_categories=["QA_Open", " json_extract "])
+        assert any("qa_open" in note for note in notes)
+
+
+class TestDisclosureEndToEnd:
+    """报告里的 notes 必须按本轮实际跑到的分类过滤。"""
+
+    @staticmethod
+    def _json_case() -> EvalCase:
+        return EvalCase.from_dict(
+            {
+                "id": "json-001",
+                "category": "json_extract",
+                "prompt": "抽取字段",
+                "expected": {"price": 5999},
+                "metrics": ["is_json"],
+                "source": "json_extract",
+            }
+        )
+
+    def test_report_omits_unrun_judge_only_category(self) -> None:
+        _, report = run_case(self._json_case(), '{"price": 5999}')
+        assert not any("qa_open" in note for note in report.notes)
+
+    def test_report_mentions_judge_only_category_when_ran(self) -> None:
+        case = EvalCase.from_dict(dict(QA_OPEN_CASE))
+        _, report = run_case(case, GOOD_BUT_DIFFERENT)
+        assert any("qa_open" in note and "judge" in note for note in report.notes)
