@@ -12,6 +12,7 @@ from conftest import FakeLLM
 from src.config import RunSettings
 from src.datasets.schema import DIMENSIONS, DatasetError, EvalCase
 from src.metrics.registry import MetricFactory
+from src.runner.dimension import DEFAULT_DIMENSION_BY_CATEGORY, resolve_dimension
 from src.runner.results import dimension_label
 from src.runner.runner import EvalRunner
 
@@ -161,3 +162,76 @@ class TestDimensionLabel:
 
     def test_unknown_value_falls_back_to_itself(self) -> None:
         assert dimension_label("whatever") == "whatever"
+
+
+class TestDefaultDimensionByCategory:
+    """没写 dimension 的用例按分类推导默认维度：声明 > 分类映射 > untagged。"""
+
+    @pytest.mark.parametrize(
+        ("category", "expected"),
+        [
+            ("json_extract", "format"),
+            ("math_reasoning", "correctness"),
+            ("qa_open", "correctness"),
+            ("qa_zh", "correctness"),
+            ("safety_redteam", "safety"),
+        ],
+    )
+    def test_category_default(self, category: str, expected: str) -> None:
+        assert resolve_dimension(category) == expected
+
+    def test_declared_wins_over_category(self) -> None:
+        """json_extract 默认 format，但用例写了 safety 就以用例为准。"""
+        assert resolve_dimension("json_extract", "safety") == "safety"
+
+    @pytest.mark.parametrize("category", ["default", "qa_en", "summary", ""])
+    def test_unmapped_category_is_untagged(self, category: str) -> None:
+        assert resolve_dimension(category) == "untagged"
+
+    def test_matching_ignores_case_and_spaces(self) -> None:
+        assert resolve_dimension("  JSON_Extract ") == "format"
+
+    @pytest.mark.parametrize("declared", ["", "   "])
+    def test_blank_declared_falls_back_to_category(self, declared: str) -> None:
+        assert resolve_dimension("math_reasoning", declared) == "correctness"
+
+    def test_every_default_is_a_known_dimension(self) -> None:
+        """映射表写错维度名会让整组用例静默落进未知组，这里锁死。"""
+        assert set(DEFAULT_DIMENSION_BY_CATEGORY.values()) <= set(DIMENSIONS)
+
+    def test_unlabelled_case_is_tagged_by_category(self) -> None:
+        case = EvalCase.from_dict(
+            {
+                "id": "c1",
+                "category": "json_extract",
+                "prompt": "1+1",
+                "expected": "2",
+                "metrics": ["exact_match"],
+            }
+        )
+        report = _runner().run_cases([case])
+
+        assert report.cases[0].dimension == "format"
+        assert [g.key for g in report.by_dimension("fake")] == ["format"]
+
+    def test_declared_dimension_survives_in_report(self) -> None:
+        case = EvalCase.from_dict(
+            {
+                "id": "c1",
+                "category": "json_extract",
+                "dimension": "safety",
+                "prompt": "1+1",
+                "expected": "2",
+                "metrics": ["exact_match"],
+            }
+        )
+        assert _runner().run_cases([case]).cases[0].dimension == "safety"
+
+    def test_default_tag_does_not_change_verdict(self) -> None:
+        """默认标签只是分组依据，判定结果必须与分类无关。"""
+        raw = {"id": "c1", "prompt": "1+1", "expected": "2", "metrics": ["exact_match"]}
+        tagged = EvalCase.from_dict({**raw, "category": "json_extract"})
+        plain = EvalCase.from_dict({**raw, "category": "default"})
+
+        assert _runner().run_cases([tagged]).cases[0].passed is True
+        assert _runner().run_cases([plain]).cases[0].passed is True
