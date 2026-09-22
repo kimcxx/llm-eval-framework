@@ -44,8 +44,25 @@ def case_status(c):
     return 'fail'
 
 
+def case_key(c):
+    """一条 case 记录的唯一键：``case_id`` + ``model``（用 ``\\x1f`` 分隔）。
+
+    多模型报告里同一个 ``case_id`` 会出现 N 次（每个模型一条），只用
+    ``case_id`` 当键会让后写的覆盖先写的：列表行明明是 A 模型那条，
+    点开抽屉拿到的却是 B 模型那条（状态可能相反）。
+
+    所以凡是「case → 单条记录」的映射（抽屉查找、跨次对比聚合）
+    都必须用这个复合键；单模型报告下它与 ``case_id`` 等价。
+    """
+    if not isinstance(c, dict):
+        return ""
+    cid = c.get("case_id")
+    model = c.get("model")
+    return f"{'' if cid is None else cid}\x1f{'' if model is None else model}"
+
+
 def diff_cases(curr_cases, base_cases):
-    """跨次对比：按 case_id 字符串排序后比较 passed 状态变化。
+    """跨次对比：按用例唯一键（case_id + 模型）排序后比较 passed 状态变化。
 
     返回 dict：
     - regressed: 上次通过 → 这次失败（list[{curr, base}]）
@@ -58,21 +75,15 @@ def diff_cases(curr_cases, base_cases):
     """
     curr = list(curr_cases or [])
     base = list(base_cases or [])
-    curr_map = {c.get('case_id'): c for c in curr if isinstance(c, dict) and c.get('case_id') is not None}
-    base_map = {c.get('case_id'): c for c in base if isinstance(c, dict) and c.get('case_id') is not None}
-    all_ids = sorted(set(curr_map) | set(base_map))
-
-    def _find(arr, cid):
-        for x in arr:
-            if isinstance(x, dict) and x.get('case_id') == cid:
-                return x
-        return None
+    curr_map = {case_key(c): c for c in curr if isinstance(c, dict) and c.get("case_id") is not None}
+    base_map = {case_key(c): c for c in base if isinstance(c, dict) and c.get("case_id") is not None}
+    all_keys = sorted(set(curr_map) | set(base_map))
 
     regressed, fixed, still_failing = [], [], []
     only_in_curr, only_in_base = [], []
-    for cid in all_ids:
-        cur = _find(curr, cid)
-        b = _find(base, cid)
+    for key in all_keys:
+        cur = curr_map.get(key)
+        b = base_map.get(key)
         if cur is not None and b is None:
             only_in_curr.append(cur)
             continue
@@ -80,18 +91,18 @@ def diff_cases(curr_cases, base_cases):
             only_in_base.append(b)
             continue
         cs, bs = case_status(cur), case_status(b)
-        if bs == 'pass' and cs != 'pass':
-            regressed.append({'curr': cur, 'base': b})
-        elif bs != 'pass' and cs == 'pass':
-            fixed.append({'curr': cur, 'base': b})
-        elif cs != 'pass':
-            still_failing.append({'curr': cur, 'base': b})
+        if bs == "pass" and cs != "pass":
+            regressed.append({"curr": cur, "base": b})
+        elif bs != "pass" and cs == "pass":
+            fixed.append({"curr": cur, "base": b})
+        elif cs != "pass":
+            still_failing.append({"curr": cur, "base": b})
     return {
-        'regressed': regressed,
-        'fixed': fixed,
-        'stillFailing': still_failing,
-        'onlyInCurr': only_in_curr,
-        'onlyInBase': only_in_base,
+        "regressed": regressed,
+        "fixed": fixed,
+        "stillFailing": still_failing,
+        "onlyInCurr": only_in_curr,
+        "onlyInBase": only_in_base,
     }
 
 
@@ -532,17 +543,27 @@ function statusOf(c) {
   return 'fail';
 }
 
-// 跨次对比：按 case_id 字符串排序
+// 用例唯一键：case_id + 模型（与后端 case_key 同口径，分隔符 \x1f）
+// 多模型报告里同一 case_id 有 N 条（每模型一条），只用 case_id 当键会让
+// 后写的覆盖先写的 —— 列表行是 A 模型，点开抽屉却是 B 模型（状态可能相反）。
+function caseKey(c) {
+  if (!c) return '';
+  return String(c.case_id ?? '') + '\x1f' + String(c.model ?? '');
+}
+
+// 跨次对比：按用例唯一键（case_id + 模型）排序
 function diffCases(currCases, baseCases) {
-  const byId = (arr, id) => (arr || []).find(x => x.case_id === id);
+  const keyOf = caseKey;
   const ids = new Set();
-  (currCases || []).forEach(c => ids.add(c.case_id));
-  (baseCases || []).forEach(c => ids.add(c.case_id));
+  (currCases || []).forEach(c => ids.add(keyOf(c)));
+  (baseCases || []).forEach(c => ids.add(keyOf(c)));
   const allIds = Array.from(ids).sort();
   const regressed = [], fixed = [], stillFailing = [], onlyInCurr = [], onlyInBase = [];
+  const mapOf = arr => new Map((arr || []).map(c => [keyOf(c), c]));
+  const currMap = mapOf(currCases), baseMap = mapOf(baseCases);
   for (const id of allIds) {
-    const cur = byId(currCases, id);
-    const base = byId(baseCases, id);
+    const cur = currMap.get(id);
+    const base = baseMap.get(id);
     if (cur && !base) { onlyInCurr.push(cur); continue; }
     if (base && !cur) { onlyInBase.push(base); continue; }
     const cs = statusOf(cur), bs = statusOf(base);
@@ -896,7 +917,9 @@ function renderCasesTab(r, file) {
       <div class="sub" style="margin-bottom:10px">
         数据流：<code>datasets/*.jsonl</code>（每行 = 一条评测用例：输入 + 期望输出）
         → runner 调模型 → 按分类打分 → <code>report.json</code> 的 <code>cases[]</code> → 本页。
-        每行展示<b>输入 / 模型输出</b>摘要，点行看完整 prompt、期望输出、评分明细。
+        每行 = <b>某个模型跑某条用例</b>的一条结果（同一 case_id 会有多行，
+        一行一个模型）；展示<b>输入 / 模型输出</b>摘要，点行看完整 prompt、
+        期望输出、评分明细（抽屉里显示的就是这一行所属模型的那条结果）。
       </div>
       <div class="toolbar">
         <select id="fltStatus">
@@ -914,15 +937,16 @@ function renderCasesTab(r, file) {
       </div>
       <div class="card" style="padding:0;overflow:auto">
         <table>
-          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:80px">延迟</th></tr>
+          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:80px">延迟</th></tr>
           ${filtered.map(c => {
             const st = statusOf(c);
             const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
             const failMetric = (c.metrics || []).find(m => m.passed === false);
             return `
-            <tr class="rowlink" data-case="${esc(c.case_id)}">
+            <tr class="rowlink" data-case="${esc(caseKey(c))}">
               <td><span class="badge ${st}">${st==='pass'?'✓':st==='fail'?'✗':'-'}</span></td>
               <td><code>${esc(c.case_id)}</code></td>
+              <td><span class="badge">${esc(c.model || '（无）')}</span></td>
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.prompt, 80))}</td>
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.response, 80))}${st==='fail' && failMetric ? `<div class="err" style="font-size:12px;margin-top:3px">${esc(prev(failMetric.detail || failMetric.name, 60))}</div>` : ''}</td>
               <td><span class="badge">${esc(c.category || '（无）')}</span></td>
@@ -935,8 +959,8 @@ function renderCasesTab(r, file) {
     document.getElementById('fltCat').onchange = e => { state.category = e.target.value; draw(); };
     document.getElementById('fltQ').oninput = e => { state.q = e.target.value; draw(); };
   };
-  // 用例 id → case 映射（用于行点击打开 drawer）
-  window.casesById = new Map(cases.map(c => [c.case_id, c]));
+  // 用例唯一键 → case 映射（用于行点击打开 drawer；多模型报告下 case_id 不唯一）
+  window.casesByKey = new Map(cases.map(c => [caseKey(c), c]));
   draw();
 }
 
@@ -973,7 +997,7 @@ async function renderDiffTab(r, file) {
     }
     const base = await (await fetch('api/report/' + encodeURIComponent(baseFile))).json();
     const d = diffCases(r.cases || [], base.cases || []);
-    window.casesById = new Map((r.cases || []).map(c => [c.case_id, c]));
+    window.casesByKey = new Map((r.cases || []).map(c => [caseKey(c), c]));
     const renderGroup = (title, color, rows, label) => {
       if (!rows.length) return `<div class="card"><div style="font-weight:600;margin-bottom:10px">${esc(title)} <span class="badge" style="margin-left:6px">0</span></div><div class="catname" style="padding:8px 0">无</div></div>`;
       return `
@@ -985,7 +1009,7 @@ async function renderDiffTab(r, file) {
               const cur = row.curr || row, base = row.base;
               const cs = statusOf(cur), bs = base ? statusOf(base) : '—';
               return `
-              <tr class="rowlink ${color}" data-case="${esc(cur.case_id)}">
+              <tr class="rowlink ${color}" data-case="${esc(caseKey(cur))}">
                 <td><span class="badge ${color}">${esc(label)}</span></td>
                 <td>${esc(cur.case_id)}</td>
                 <td><span class="badge">${esc(cur.category || '（无）')}</span></td>
@@ -1226,7 +1250,7 @@ $app.addEventListener('click', e => {
   const trGo = e.target.closest && e.target.closest('tr.rowlink[data-go]');
   if (trGo) { location.hash = trGo.dataset.go; return; }
   const trCase = e.target.closest && e.target.closest('tr.rowlink[data-case]');
-  if (trCase) { openDrawer(window.casesById.get(trCase.dataset.case)); return; }
+  if (trCase) { openDrawer(window.casesByKey.get(trCase.dataset.case)); return; }
 });
 
 // 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；#tests 看 pytest 用例详情
