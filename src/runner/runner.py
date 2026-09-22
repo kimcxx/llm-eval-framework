@@ -19,6 +19,7 @@ from src.datasets.schema import EvalCase
 from src.llm.base import BaseLLM, LLMError, LLMResponse
 from src.metrics.base import MetricResult
 from src.metrics.registry import MetricFactory
+from src.runner.dimension import resolve_dimension
 from src.runner.results import CaseResult, EvalReport
 
 
@@ -110,7 +111,8 @@ class EvalRunner:
             dataset=case.source,
             model=model_name,
             prompt=case.prompt,
-            dimension=case.dimension,
+            # 用例没声明 dimension 时按分类推导默认值，避免整份报告都落进 untagged
+            dimension=resolve_dimension(case.category, case.dimension),
             expected=case.expected,
         )
 
