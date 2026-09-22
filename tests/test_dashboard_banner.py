@@ -131,6 +131,34 @@ class TestWeakestDimension:
         }
         assert _weakest_dimension(doc, "deepseek-chat") == ("安全", 1.0)
 
+    def test_fallback_skips_mock_control_group(self) -> None:
+        """目标模型缺席：跳过 mock-* 对照组，取真实模型的维度。
+
+        mock-baseline 是阴性对照，它的 10% 不是被测模型的能力，不该出现在 banner。
+        """
+        doc = {
+            "dimensions": {
+                "mock-baseline": [{"dimension": "safety", "pass_rate": 0.1}],
+                "deepseek-pro": [{"dimension": "safety", "pass_rate": 0.83}],
+            }
+        }
+        assert _weakest_dimension(doc, "deepseek-chat") == ("安全", 0.83)
+
+    def test_fallback_keeps_mock_when_only_mock(self) -> None:
+        """全是 mock 的报告（CD 冒烟）：退回对照组自身，而不是显示 "—"。"""
+        doc = {"dimensions": {"mock-baseline": [{"dimension": "format", "pass_rate": 0.25}]}}
+        assert _weakest_dimension(doc, "deepseek-chat") == ("格式合规", 0.25)
+
+    def test_categories_fallback_skips_mock_control_group(self) -> None:
+        """categories 兜底路径同样跳过 mock-*（老报告没有 dimensions 段）。"""
+        doc = {
+            "categories": {
+                "mock-baseline": [{"category": "json_extract", "total": 18, "pass_rate": 0.0}],
+                "deepseek-pro": [{"category": "json_extract", "total": 18, "pass_rate": 0.72}],
+            }
+        }
+        assert _weakest_dimension(doc, "deepseek-chat") == ("json_extract", 0.72)
+
     def test_returns_none_when_no_dimensions(self) -> None:
         """dimensions 段缺失 → None，前端显示 "—"。"""
         assert _weakest_dimension({}, "m") is None

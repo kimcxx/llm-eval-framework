@@ -86,9 +86,31 @@ def test_rank_is_sorted_by_pass_rate_desc():
         {'model': 'deepseek-chat', 'pass_rate': 0.898, 'skipped': 0},
     ], notes=['裁判模型 glm-4.5-air（通过阈值 4/5）'])
     c = compute_conclusion(r)
-    assert [x['model'] for x in c['rank']] == ['deepseek-pro', 'deepseek-chat', 'mock-baseline']
+    assert [x['model'] for x in c['rank']] == ['deepseek-pro', 'deepseek-chat']
     assert c['judge'] == 'glm-4.5-air'
-    assert 'deepseek-pro 90.8% > deepseek-chat 89.8% > mock-baseline 34.7%' in c['text']
+    assert 'deepseek-pro 90.8% > deepseek-chat 89.8%' in c['text']
+    assert 'mock-baseline' not in c['text']
+
+
+def test_rank_excludes_mock_control_group():
+    """通过率排名里排除 mock-*：它是阴性对照，不是被测模型。"""
+    r = _report(summary=[
+        {'model': 'mock-baseline', 'pass_rate': 0.347, 'skipped': 0},
+        {'model': 'deepseek-pro', 'pass_rate': 0.908, 'skipped': 0},
+    ], notes=['裁判模型 glm-4.5-air（通过阈值 4/5）'])
+    c = compute_conclusion(r)
+    assert [x['model'] for x in c['rank']] == ['deepseek-pro']
+    assert 'mock-baseline' not in c['text']
+
+
+def test_rank_keeps_mock_when_all_mock():
+    """全是 mock 的报告（CD 冒烟）：排名不能为空，退回所有模型。"""
+    r = _report(summary=[
+        {'model': 'mock-baseline', 'pass_rate': 0.347, 'skipped': 0},
+        {'model': 'mock-alt', 'pass_rate': 0.5, 'skipped': 0},
+    ], notes=['裁判模型 glm-4.5-air（通过阈值 4/5）'])
+    c = compute_conclusion(r)
+    assert [x['model'] for x in c['rank']] == ['mock-alt', 'mock-baseline']
 
 
 def test_text_contains_judge_and_no_anomaly_when_clean():
