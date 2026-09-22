@@ -13,15 +13,17 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import OrderedDict
+from collections.abc import Iterable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config import DEFAULT_CONFIG_PATH, load_config  # noqa: E402
+from src.config import DEFAULT_CONFIG_PATH, ConfigError, load_config  # noqa: E402
 from src.datasets import EvalCase, load_datasets  # noqa: E402
 from src.llm import build_client, build_clients  # noqa: E402
+from src.llm.base import BaseLLM  # noqa: E402
 from src.metrics import MetricFactory  # noqa: E402
 from src.report import write_reports  # noqa: E402
 from src.runner import EvalRunner  # noqa: E402
@@ -67,6 +69,26 @@ def apply_limit(cases: list[EvalCase], limit: int | None) -> list[EvalCase]:
     return [case for group in grouped.values() for case in group[:limit]]
 
 
+def drop_judge_from_eval(
+    clients: dict[str, BaseLLM],
+    judge_name: str | None,
+    explicit_names: Iterable[str] = (),
+) -> str:
+    """决定裁判模型是否留在被测列表里。
+
+    裁判模型同时当选手会自评（尤其 judge_only_categories 下的分类），所以默认移除；
+    只有用户用 --models 显式点名时才保留，由调用方负责给出自评警告。
+
+    返回：'removed'（已移除）/ 'kept'（显式指定，保留）/ 'absent'（本来就不在被测列表）。
+    """
+    if not judge_name or judge_name not in clients:
+        return "absent"
+    if judge_name in set(explicit_names):
+        return "kept"
+    clients.pop(judge_name)
+    return "removed"
+
+
 def print_console_summary(report) -> None:
     print("\n" + "=" * 74)
     print(f"{'模型':<20}{'用例':>6}{'通过':>6}{'失败':>6}{'跳过':>6}{'通过率':>10}{'P95(ms)':>10}")
@@ -96,12 +118,36 @@ def main(argv: list[str] | None = None) -> int:
     cases = load_datasets(config.paths.datasets_dir, args.datasets, categories=categories)
     cases = apply_limit(cases, args.limit)
 
+    # --models 里点名的模型做一次归一化，便于与裁判模型按配置名比对
+    explicit_names: set[str] = set()
+    for name in args.models or []:
+        try:
+            explicit_names.add(config.get_model(name).name)
+        except ConfigError:
+            pass
+
     judge_client = None
     judge_cfg = config.get_judge()
+    extra_notes: list[str] = []
     if judge_cfg is not None:
         if judge_cfg.is_available:
             judge_client = build_client(judge_cfg, config.run)
-            if judge_cfg.name not in clients:
+            state = drop_judge_from_eval(clients, judge_cfg.name, explicit_names)
+            if state == "removed":
+                print(
+                    f"裁判模型 {judge_cfg.name} 已加载，已从被测模型列表移除"
+                    f"（如需同时评测，请用 --models 显式指定）"
+                )
+            elif state == "kept":
+                extra_notes.append(
+                    f"裁判模型 {judge_cfg.name} 同时作为被测模型（--models 显式指定），"
+                    f"其 judge 判定属于自评，结果仅供参考"
+                )
+                print(
+                    f"警告：裁判模型 {judge_cfg.name} 同时参与评测（--models 显式指定），"
+                    f"相关 judge 判定存在自评风险"
+                )
+            else:
                 print(f"裁判模型 {judge_cfg.name} 已加载（不计入被测模型）")
         else:
             print(f"裁判模型 {judge_cfg.name} 不可用（{judge_cfg.unavailable_reason}），judge 指标将被跳过")
@@ -122,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         model_configs=model_configs,
         config_path=str(args.config),
         workers=args.workers,
+        extra_notes=extra_notes,
     )
 
     report = runner.run_cases(cases)

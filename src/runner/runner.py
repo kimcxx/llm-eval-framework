@@ -33,6 +33,7 @@ class EvalRunner:
         config_path: str = "",
         workers: int | None = None,
         verbose: bool = True,
+        extra_notes: Sequence[str] | None = None,
     ) -> None:
         self.clients = clients
         self.factory = factory
@@ -41,6 +42,7 @@ class EvalRunner:
         self.config_path = config_path
         self.workers = max(1, workers or run.workers)
         self.verbose = verbose
+        self.extra_notes = list(extra_notes or [])
 
     # ---------------- 主流程 ---------------- #
 
@@ -87,7 +89,7 @@ class EvalRunner:
             models=models,
             datasets=sorted({c.source for c in cases}),
             cases=results,
-            notes=self.factory.notes(),
+            notes=self.factory.notes() + self.extra_notes,
             config_path=self.config_path,
         )
 
