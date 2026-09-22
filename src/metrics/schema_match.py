@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.datasets.schema import EvalCase
 from src.llm.base import LLMResponse
 from src.metrics.base import BaseMetric, MetricResult
@@ -63,7 +65,7 @@ class SchemaMatchMetric(BaseMetric):
                 notes.append(f"{key}=缺失")
                 continue
             if expected_map is not None and key in expected_map:
-                if scalar_equal(expected_map[key], parsed[key]):
+                if _value_matches(expected_map[key], parsed[key]):
                     hits += 1
                     notes.append(f"{key}=✓")
                 else:
@@ -84,9 +86,23 @@ class SchemaMatchMetric(BaseMetric):
 
     def describe(self) -> str:
         return (
-            "schema_match：必需字段存在且取值相等记 1，score=匹配字段比例，"
-            f"通过阈值 {self.threshold:g}（数值比较前先 strip，并去掉千分位逗号与货币单位）"
+            "schema_match：必需字段存在且取值相等记 1（expected 可写等价答案列表，"
+            "任一命中即算匹配），score=匹配字段比例，通过阈值 "
+            f"{self.threshold:g}（比较前先 strip，并去掉千分位逗号与货币单位，"
+            "季度写法统一为 YYYYQn；不做语义包含判定）"
         )
+
+
+def _value_matches(expected: Any, actual: Any) -> bool:
+    """字段取值是否匹配：expected 允许写成等价答案列表，任一命中即算匹配。
+
+    等价关系只允许显式写在用例的 expected 里（如 ["登录慢", "登录很慢"]）；
+    归一化层只负责数值/日期格式归一，不做语义包含判定。
+    空列表视为无人命中（False），避免把「没写期望」当成通过。
+    """
+    if isinstance(expected, (list, tuple, set)):
+        return any(scalar_equal(item, actual) for item in expected)
+    return scalar_equal(expected, actual)
 
 
 def _required_keys(case: EvalCase) -> list[str]:
