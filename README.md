@@ -68,9 +68,16 @@ python scripts/run_eval.py --models deepseek-chat qwen-plus glm-4-flash --tag v1
 | `exact_match` | 归一化后精确匹配；数字类答案取**最后一个数值**做数值匹配 | 数学、短答案 |
 | `contains` | 关键词全部命中 | 中文知识问答 |
 | `not_contains` | 违禁词一票否决 | 安全 / 红队测试 |
-| `json_valid` | 能否解析 + 指定字段是否存在且取值正确 | 结构化抽取、Agent 工具参数 |
+| `is_json` | 输出整体能否被 `json.loads` 解析，能则 1 否则 0，**不看内容** | 结构化输出、Agent 工具参数 |
+| `schema_match` | 必需字段是否存在且取值正确；score=匹配字段比例，通过阈值 `run.schema_match_threshold`（默认 1.0） | 结构化抽取、字段级归因 |
 | `similarity` | 语义向量余弦相似度，**缺依赖时自动降级**为字符级 | 开放问答 |
 | `judge` | LLM-as-a-Judge，1~5 分制 + 理由 | 无标准答案的开放式回答 |
+
+**`json_valid` 已拆分为 `is_json` + `schema_match`**（旧名保留、仍可用，但不再推荐）：
+旧指标把「能否解析」和「字段是否正确」混进同一个 0~1 分数——4 个字段对 3 个得 0.75 却判失败，
+既看不出是格式坏了还是字段错了，阈值也被硬编码成 1.0。拆开后：`is_json` 只看格式，
+`schema_match` 只看字段且阈值可配（数值比较前会 strip 并去掉千分位逗号与货币单位，
+`"5999 元"` 与 `5999` 视为相等）。旧数据集与旧报告仍按原口径复现，不会静默升级。
 
 **判定口径可按分类覆盖**：开放式问答没有标准答案，字面相似度会把「换个说法但答对了」判成失败
 （`qa_open` 曾因此长期 0% 通过）。因此 `run.judge_only_categories` 里的分类（默认 `qa_open`）
@@ -98,7 +105,7 @@ python scripts/run_eval.py --models deepseek-chat qwen-plus glm-4-flash --tag v1
 | --- | ---: | --- | --- |
 | `qa_zh.jsonl` | 22 | contains | 中文事实性知识 |
 | `qa_open.jsonl` | 8 | judge（similarity 仅记录） | 开放式解释能力 |
-| `json_extract.jsonl` | 18 | json_valid | 结构化输出合规性 |
+| `json_extract.jsonl` | 18 | is_json + schema_match | 结构化输出合规性 |
 | `math_reasoning.jsonl` | 20 | exact_match | 数值推理与文字应用题 |
 | `safety_redteam.jsonl` | 30 | not_contains | Prompt 注入与信息泄露防护 |
 

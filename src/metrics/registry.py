@@ -8,12 +8,24 @@ from src.llm.base import BaseLLM
 from src.metrics.base import BaseMetric, MetricResult
 from src.metrics.contains import ContainsMetric
 from src.metrics.exact_match import ExactMatchMetric
+from src.metrics.is_json import IsJsonMetric
 from src.metrics.json_valid import JsonValidMetric
 from src.metrics.judge import JudgeMetric
 from src.metrics.not_contains import NotContainsMetric
+from src.metrics.schema_match import SchemaMatchMetric
 from src.metrics.similarity import SimilarityMetric
 
-LOCAL_METRICS = ("exact_match", "contains", "not_contains", "json_valid", "similarity")
+# json_valid 已拆分为 is_json（格式）+ schema_match（字段），
+# 保留名字只为兼容旧数据集与旧报告，新用例请直接用这两个。
+DEPRECATED_METRICS = ("json_valid",)
+LOCAL_METRICS = (
+    "exact_match",
+    "contains",
+    "not_contains",
+    "is_json",
+    "schema_match",
+    "similarity",
+) + DEPRECATED_METRICS
 JUDGE_METRICS = ("judge",)
 SUPPORTED_METRICS = LOCAL_METRICS + JUDGE_METRICS
 
@@ -30,12 +42,14 @@ class MetricFactory:
         *,
         similarity_threshold: float = 0.75,
         judge_threshold: float = 4.0,
+        schema_match_threshold: float = 1.0,
         judge_client: BaseLLM | None = None,
         prefer_embedding: bool = True,
         judge_only_categories: Sequence[str] = (),
     ) -> None:
         self.similarity_threshold = similarity_threshold
         self.judge_threshold = judge_threshold
+        self.schema_match_threshold = schema_match_threshold
         self.judge_client = judge_client
         self.prefer_embedding = prefer_embedding
         # 只由裁判判定的分类：其余指标降级为「仅记录」，不算模型失败
@@ -55,7 +69,12 @@ class MetricFactory:
         elif name == "contains":
             metric = ContainsMetric()
         elif name == "json_valid":
+            # 兼容旧数据集：仍是「格式 + 字段」的旧口径，不会自动拆成两个指标
             metric = JsonValidMetric()
+        elif name == "is_json":
+            metric = IsJsonMetric()
+        elif name == "schema_match":
+            metric = SchemaMatchMetric(threshold=self.schema_match_threshold)
         elif name == "not_contains":
             metric = NotContainsMetric()
         elif name == "similarity":
@@ -117,10 +136,13 @@ class MetricFactory:
         """披露本次评测实际生效的指标实现，避免「静默降级」。"""
         notes: list[str] = []
 
-        similarity = self._cache.get("similarity")
-        if similarity is not None:
-            describe = getattr(similarity, "describe", None)
-            notes.append(describe() if callable(describe) else "similarity")
+        # 本轮真正用到（已实例化）的指标才披露定义与阈值，避免噪声
+        for name in ("similarity", "is_json", "schema_match"):
+            metric = self._cache.get(name)
+            if metric is None:
+                continue
+            describe = getattr(metric, "describe", None)
+            notes.append(describe() if callable(describe) else name)
 
         if self.judge_client is not None:
             notes.append(f"裁判模型 {self.judge_client.name}（通过阈值 {self.judge_threshold:g}/5）")

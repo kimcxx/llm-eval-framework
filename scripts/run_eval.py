@@ -109,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     factory = MetricFactory(
         similarity_threshold=config.run.similarity_threshold,
         judge_threshold=config.run.judge_threshold,
+        schema_match_threshold=config.run.schema_match_threshold,
         judge_client=judge_client,
         prefer_embedding=not args.no_embedding,
         judge_only_categories=config.run.judge_only_categories,

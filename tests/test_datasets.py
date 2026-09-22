@@ -96,9 +96,9 @@ class TestShippedDatasets:
         """指标与数据必须自洽，否则会出现大量无意义的「跳过」。"""
         cases = load_datasets(project_root / "datasets")
         for case in cases:
-            if "json_valid" in case.metrics:
+            if "json_valid" in case.metrics or "schema_match" in case.metrics:
                 assert case.required_keys or isinstance(case.expected, dict), (
-                    f"{case.id} 使用 json_valid 但未提供 required_keys/expected"
+                    f"{case.id} 使用 JSON 类指标但未提供 required_keys/expected"
                 )
             if "not_contains" in case.metrics:
                 assert case.meta.get("forbidden"), f"{case.id} 使用 not_contains 但未提供 forbidden"

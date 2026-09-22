@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import unicodedata
 from typing import Any
@@ -102,6 +103,46 @@ def to_float(value: Any) -> float | None:
         return float(str(value).strip())
     except (TypeError, ValueError):
         return None
+
+
+# 货币单位：抽取任务里「5999 元」「￥5,999」和 5999 是同一个值，
+# 但字面比较会把它们判成错误，属于典型的假失败。
+_CURRENCY_RE = re.compile(r"(?:人民币|rmb|cny|usd|￥|¥|\$|元|块钱)", re.IGNORECASE)
+
+# 千分位分隔符：只删「数字,数字」这种位置的逗号，避免误伤 "a,b" 这类文本
+_THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d)")
+
+
+def _strip_numeric_noise(value: Any) -> str:
+    """strip → 去货币单位 → 去千分位逗号（保留小数点，供数值解析用）。"""
+    if value is None:
+        return ""
+    text = _CURRENCY_RE.sub("", str(value).strip())
+    return _THOUSANDS_RE.sub("", text)
+
+
+def normalize_scalar(value: Any) -> str:
+    """标量值归一化：先抹掉货币/千分位噪声，再走通用文本归一化。"""
+    return normalize_text(_strip_numeric_noise(value))
+
+
+def scalar_equal(expected: Any, actual: Any) -> bool:
+    """判断两个标量是否相等：优先按数值比，数值不可比时再按归一化文本比。
+
+    数值优先是因为 5999 与 "5999"、"5,999.0" 都应该是同一个值；
+    文本兜底则覆盖 "iOS"、"2024-06-11" 这类非数值字段。
+    注意数值比较必须在抹掉标点（含小数点）之前进行，否则 1.0 会被文本归一化成 10。
+    """
+    want_raw = _strip_numeric_noise(expected)
+    got_raw = _strip_numeric_noise(actual)
+    if not want_raw or not got_raw:
+        return want_raw == got_raw
+
+    want_num = to_float(want_raw)
+    got_num = to_float(got_raw)
+    if want_num is not None and got_num is not None:
+        return math.isclose(want_num, got_num, rel_tol=1e-9, abs_tol=1e-9)
+    return normalize_text(want_raw) == normalize_text(got_raw)
 
 
 def bigram_jaccard(a: str, b: str) -> float:

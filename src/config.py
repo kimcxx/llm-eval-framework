@@ -106,6 +106,9 @@ class RunSettings:
     timeout_s: float = 60.0
     similarity_threshold: float = 0.75
     judge_threshold: float = 4.0
+    # schema_match 的通过阈值：score（匹配字段比例）不低于该值才算通过。
+    # 默认 1.0 = 所有必需字段都必须正确，与旧 json_valid 的口径一致。
+    schema_match_threshold: float = 1.0
     # 这些分类只由 LLM 裁判判定：同类用例里的其它指标（如 similarity）
     # 仍然计算并写进报告明细，但不参与通过/失败判定（仅作记录）。
     # 背景：开放式问答没有标准答案，字面相似度会把「换个说法但答对了」误判为失败。
