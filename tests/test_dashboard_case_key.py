@@ -182,3 +182,9 @@ class TestFrontendContract:
     def test_case_list_shows_model_column(self):
         """列表必须能看出每行属于哪个模型，否则三行同 id 仍然无法区分。"""
         assert "模型</th>" in PAGE
+
+    def test_case_list_has_model_filter(self):
+        """多模型报告几百行混排，必须能按模型筛选（下拉 + 对应的筛选状态）。"""
+        assert 'id="fltModel"' in PAGE
+        assert "state.model" in PAGE
+        assert "fltModel').onchange" in PAGE

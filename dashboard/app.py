@@ -894,7 +894,9 @@ function renderSummaryTab(r) {
 function renderCasesTab(r, file) {
   const cases = (r.cases || []).slice().sort((a, b) => String(a.case_id).localeCompare(String(b.case_id)));
   const cats = Array.from(new Set(cases.map(c => c.category || '（无）'))).sort();
-  let state = {status: 'all', category: 'all', q: ''};
+  // 多模型报告里同一 case_id 会有多行，模型下拉用来只看某个模型的结果
+  const models = Array.from(new Set(cases.map(c => c.model || '（无）'))).sort();
+  let state = {status: 'all', model: 'all', category: 'all', q: ''};
   // 单行预览：压平换行 + 截断（promptfoo 式列表直接可见输入/输出摘要）
   const prev = (s, n) => {
     if (s == null) return '';
@@ -905,6 +907,7 @@ function renderCasesTab(r, file) {
   const draw = () => {
     const filtered = cases.filter(c => {
       if (state.status !== 'all' && statusOf(c) !== state.status) return false;
+      if (state.model !== 'all' && (c.model || '（无）') !== state.model) return false;
       if (state.category !== 'all' && (c.category || '（无）') !== state.category) return false;
       if (state.q) {
         const q = state.q.toLowerCase();
@@ -927,6 +930,10 @@ function renderCasesTab(r, file) {
           <option value="pass" ${state.status==='pass'?'selected':''}>通过</option>
           <option value="fail" ${state.status==='fail'?'selected':''}>失败</option>
           <option value="skip" ${state.status==='skip'?'selected':''}>跳过</option>
+        </select>
+        <select id="fltModel" ${models.length <= 1 ? 'disabled title="本报告只有一个模型"' : ''}>
+          <option value="all" ${state.model==='all'?'selected':''}>${models.length > 1 ? `全部模型（${models.length}）` : '全部模型'}</option>
+          ${models.map(m => `<option value="${esc(m)}" ${state.model===m?'selected':''}>${esc(m)}</option>`).join('')}
         </select>
         <select id="fltCat">
           <option value="all" ${state.category==='all'?'selected':''}>全部分类</option>
@@ -956,6 +963,7 @@ function renderCasesTab(r, file) {
         </table>
       </div>`;
     document.getElementById('fltStatus').onchange = e => { state.status = e.target.value; draw(); };
+    document.getElementById('fltModel').onchange = e => { state.model = e.target.value; draw(); };
     document.getElementById('fltCat').onchange = e => { state.category = e.target.value; draw(); };
     document.getElementById('fltQ').oninput = e => { state.q = e.target.value; draw(); };
   };
