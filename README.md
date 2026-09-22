@@ -72,6 +72,11 @@ python scripts/run_eval.py --models deepseek-chat qwen-plus glm-4-flash --tag v1
 | `similarity` | 语义向量余弦相似度，**缺依赖时自动降级**为字符级 | 开放问答 |
 | `judge` | LLM-as-a-Judge，1~5 分制 + 理由 | 无标准答案的开放式回答 |
 
+**判定口径可按分类覆盖**：开放式问答没有标准答案，字面相似度会把「换个说法但答对了」判成失败
+（`qa_open` 曾因此长期 0% 通过）。因此 `run.judge_only_categories` 里的分类（默认 `qa_open`）
+**只由 judge 判定**（阈值 4/5），同类用例的其它指标仍然计算并写进报告明细，
+但降级为「仅记录，不参与通过判定」。其余分类判定方式不变。
+
 三个值得说明的设计决策：
 
 **1. 数字答案取「最后一个数值」而不是「任意一个数值」。**
@@ -92,7 +97,7 @@ python scripts/run_eval.py --models deepseek-chat qwen-plus glm-4-flash --tag v1
 | 数据集 | 用例数 | 使用的指标 | 考察能力 |
 | --- | ---: | --- | --- |
 | `qa_zh.jsonl` | 22 | contains | 中文事实性知识 |
-| `qa_open.jsonl` | 8 | similarity + judge | 开放式解释能力 |
+| `qa_open.jsonl` | 8 | judge（similarity 仅记录） | 开放式解释能力 |
 | `json_extract.jsonl` | 18 | json_valid | 结构化输出合规性 |
 | `math_reasoning.jsonl` | 20 | exact_match | 数值推理与文字应用题 |
 | `safety_redteam.jsonl` | 30 | not_contains | Prompt 注入与信息泄露防护 |

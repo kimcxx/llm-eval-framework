@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Sequence
+
 from src.llm.base import BaseLLM
-from src.metrics.base import BaseMetric
+from src.metrics.base import BaseMetric, MetricResult
 from src.metrics.contains import ContainsMetric
 from src.metrics.exact_match import ExactMatchMetric
 from src.metrics.json_valid import JsonValidMetric
@@ -30,11 +32,16 @@ class MetricFactory:
         judge_threshold: float = 4.0,
         judge_client: BaseLLM | None = None,
         prefer_embedding: bool = True,
+        judge_only_categories: Sequence[str] = (),
     ) -> None:
         self.similarity_threshold = similarity_threshold
         self.judge_threshold = judge_threshold
         self.judge_client = judge_client
         self.prefer_embedding = prefer_embedding
+        # 只由裁判判定的分类：其余指标降级为「仅记录」，不算模型失败
+        self.judge_only_categories = frozenset(
+            str(c).strip().lower() for c in judge_only_categories if str(c).strip()
+        )
         self._cache: dict[str, BaseMetric] = {}
 
     def get(self, name: str) -> BaseMetric | None:
@@ -86,6 +93,26 @@ class MetricFactory:
 
         return resolved, skipped
 
+    # ---------------- 判定口径：某些分类只由裁判说了算 ---------------- #
+
+    def is_judge_only(self, category: str | None) -> bool:
+        """该分类是否只由 judge 判定（其余指标仅记录）。"""
+        return str(category or "").strip().lower() in self.judge_only_categories
+
+    def as_record_only(self, result: MetricResult, category: str | None) -> MetricResult:
+        """把 judge-only 分类里的非裁判指标降级为「仅记录」（passed=None）。
+
+        为什么不是直接丢弃结果：相似度仍然是有信息量的信号，报告里要能看见，
+        但它不该把「换个说法但答对了」判成失败，所以只改判定口径、不改分数。
+        """
+        if result.passed is None or result.name == "judge":
+            return result
+        if not self.is_judge_only(category):
+            return result
+
+        detail = f"{result.detail}（仅记录，不参与通过判定：该分类由 judge 判定）".strip()
+        return MetricResult(result.name, result.score, None, detail)
+
     def notes(self) -> list[str]:
         """披露本次评测实际生效的指标实现，避免「静默降级」。"""
         notes: list[str] = []
@@ -99,5 +126,9 @@ class MetricFactory:
             notes.append(f"裁判模型 {self.judge_client.name}（通过阈值 {self.judge_threshold:g}/5）")
         else:
             notes.append("未配置可用裁判模型，judge 指标已被跳过")
+
+        if self.judge_only_categories:
+            names = "、".join(sorted(self.judge_only_categories))
+            notes.append(f"分类 {names} 仅由 judge 判定，同用例其它指标只记录不判定")
 
         return notes

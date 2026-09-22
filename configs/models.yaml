@@ -81,6 +81,9 @@ run:
   timeout_s: 60               # 单次调用超时
   similarity_threshold: 0.75  # 语义相似度指标的通过阈值
   judge_threshold: 4.0        # LLM 裁判的通过阈值（1~5 分制）
+  # 只由 judge 判定的分类：这些分类的其它指标（similarity）仍计算并写进明细，
+  # 但不参与通过/失败判定。开放式问答没有标准答案，字面相似度会误杀「换个说法但答对」
+  judge_only_categories: [qa_open]
 
 paths:
   datasets_dir: datasets
