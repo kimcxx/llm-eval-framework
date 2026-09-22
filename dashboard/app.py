@@ -243,7 +243,128 @@ def compute_banner(curr_entry, curr_doc, base_entry=None, base_doc=None):
     }
 
 
-PAGE = """<!DOCTYPE html>
+# ============================== 详情页「汇总」结论 ============================== #
+# 汇总 tab 顶部一句话结论：模型通过率排名 + 裁判是谁 + 值得注意的异常（如某分类明显偏低）。
+# 服务端算好后塞进 /api/report/<file> 的 `_conclusion` 字段，前端只负责渲染：
+# 这样动态服务与静态导出（build_static）结果完全一致，且逻辑能被单测覆盖。
+
+# 指标名 → 中文标签（用例抽屉里展示用；未收录的指标原样显示，不会变空白）
+METRIC_LABELS = {
+    'json_valid': '格式校验',
+    'exact_match': '精确匹配',
+    'similarity': '语义相似度',
+    'judge': 'LLM 裁判',
+    'contains': '包含检查',
+    'not_contains': '排除检查',
+}
+
+# notes 里 runner 写的是「裁判模型 glm-4.5-air（通过阈值 4/5）」
+_JUDGE_MODEL_RE = re.compile(r'裁判模型\s*([^\s（(]+)')
+
+# 样本量太小不报异常（1~2 条失败没有统计意义），阈值以下才算「明显偏低」
+_ANOMALY_MIN_TOTAL = 3
+_ANOMALY_MAX_RATE = 0.5
+
+
+def metric_label(name):
+    """指标名 → 中文标签；未收录 / 非字符串原样返回。"""
+    if not isinstance(name, str):
+        return name
+    return METRIC_LABELS.get(name, name)
+
+
+def _parse_judge_model(report):
+    """从 ``report['notes']`` 解析裁判模型名，没有则 None（老报告没有这条 note）。"""
+    if not isinstance(report, dict):
+        return None
+    for note in report.get('notes') or []:
+        if not isinstance(note, str):
+            continue
+        m = _JUDGE_MODEL_RE.search(note)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _conclusion_anomalies(report):
+    """挑出值得注意的异常：跳过用例、某分类明显偏低、未启用裁判。"""
+    anomalies = []
+
+    # 1) 跳过：通常是模型 / 裁判调用失败，会让通过率虚高或虚低，必须提示
+    for row in report.get('summary') or []:
+        if not isinstance(row, dict):
+            continue
+        skipped = row.get('skipped') or 0
+        if skipped:
+            anomalies.append(f"{row.get('model', '?')} 有 {skipped} 条用例跳过（判定不完整）")
+
+    # 2) 分类明显偏低：跨模型取该分类最差的一条，避免只盯着某一个模型。
+    #    mock-* 是对照组，本来就差，拿它报警只会制造噪音（与 banner 选代表模型同理）；
+    #    全是 mock 的报告（如 CD 冒烟）才退回到所有模型。
+    cats = report.get('categories')
+    real_models = {
+        r.get('model') for r in (report.get('summary') or [])
+        if isinstance(r, dict) and not str(r.get('model', '')).startswith('mock-')
+    }
+    worst_by_cat = {}
+    pairs = cats.items() if isinstance(cats, dict) else []
+    for _model, rows in pairs:
+        if real_models and _model not in real_models:
+            continue
+        for c in rows or []:
+            if not isinstance(c, dict) or not c.get('category'):
+                continue
+            if (c.get('total') or 0) < _ANOMALY_MIN_TOTAL:
+                continue
+            rate = c.get('pass_rate', 0.0)
+            prev = worst_by_cat.get(c['category'])
+            if prev is None or rate < prev[0]:
+                worst_by_cat[c['category']] = (rate, _model)
+    for cat, (rate, model) in sorted(worst_by_cat.items(), key=lambda kv: kv[1][0]):
+        if rate < _ANOMALY_MAX_RATE:
+            anomalies.append(f"分类 {cat} 明显偏低（{model} 仅 {rate * 100:.1f}%）")
+
+    # 3) 没裁判：judge 指标没生效，qa_open 这类只能靠字面对比，结论不可信
+    if _parse_judge_model(report) is None:
+        anomalies.append('本次未启用裁判模型（judge 指标未生效）')
+
+    return anomalies[:4]
+
+
+def compute_conclusion(report):
+    """汇总 tab 顶部「本报告结论」。纯函数无副作用，供单测与前端渲染共享。
+
+    返回 dict：
+    - ``rank``: ``[{model, pass_rate}]``，按通过率降序（相同则保持原顺序）
+    - ``judge``: 裁判模型名或 ``None``
+    - ``anomalies``: ``[str]`` 值得注意的异常（最多 4 条）
+    - ``text``: 拼好的一句话结论，前端直接展示
+    """
+    if not isinstance(report, dict):
+        return {'rank': [], 'judge': None, 'anomalies': [], 'text': '本报告无汇总数据'}
+
+    rows = [r for r in (report.get('summary') or []) if isinstance(r, dict)]
+    rank = sorted(
+        [{'model': r.get('model', '?'), 'pass_rate': r.get('pass_rate', 0.0)} for r in rows],
+        key=lambda x: -(x['pass_rate'] or 0.0),
+    )
+    judge = _parse_judge_model(report)
+    anomalies = _conclusion_anomalies(report)
+
+    if rank:
+        rank_text = ' > '.join(f"{r['model']} {r['pass_rate'] * 100:.1f}%" for r in rank)
+    else:
+        rank_text = '无模型汇总数据'
+    text = f"通过率排名：{rank_text}；裁判模型：{judge or '未启用'}"
+    if anomalies:
+        text += '；注意：' + '；'.join(anomalies)
+
+    return {'rank': rank, 'judge': judge, 'anomalies': anomalies, 'text': text}
+
+
+# 模板里的 __METRIC_LABELS__ 在导入时替换成真实的中文标签映射，
+# 保证「Python 单测可见的 METRIC_LABELS」与「前端渲染用的 METRIC_LABELS」是同一份数据。
+PAGE_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -292,6 +413,15 @@ PAGE = """<!DOCTYPE html>
   .back { color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 14px; font-size: 13px; }
   .back:hover { text-decoration: underline; }
   .catname { color: var(--muted); }
+  /* 表标题下的灰色小字：说明这张表回答什么问题 */
+  .hint { color: var(--muted); font-size: 12px; margin: -2px 0 10px; }
+  /* 详情页顶部「本报告结论」 */
+  .conclusion { border-left: 3px solid var(--accent); }
+  .anomaly-list { margin: 8px 0 0 18px; color: var(--warn); font-size: 13px; line-height: 1.8; }
+  details.card > summary { cursor: pointer; list-style: none; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::before { content: '▸ '; color: var(--muted); }
+  details.card[open] > summary::before { content: '▾ '; }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
 
   /* 标签页导航 */
@@ -377,6 +507,9 @@ const pct = x => (x * 100).toFixed(1) + '%';
 const DIM_LABELS = {correctness:'正确性', instruction_following:'指令遵循', format:'格式合规',
                     safety:'安全', robustness:'鲁棒性', knowledge:'知识时效', untagged:'未标注'};
 const dimLabel = d => d ? (DIM_LABELS[d] || d) : '未标注';
+// 指标中文标签：由后端 METRIC_LABELS 注入（与 Python 侧同一份数据），未收录的原样显示
+const METRIC_LABELS = __METRIC_LABELS__;
+const metricLabel = m => METRIC_LABELS[m] || m;
 const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(--bad)';
 const rateInner = x => `<div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div>`;
 const rateCell = x => `<td>${rateInner(x)}</td>`;
@@ -617,40 +750,97 @@ async function renderDetail(file, tab) {
 // 维度通过率表：按 case 的 dimension 标签分组，未打标签的归入 untagged 一行。
 // 注：r.dimensions 为 {model: [{dimension,label,total,passed,failed,skipped,pass_rate}]}；
 // 老报告没有该字段，返回空串不渲染。
-function dimensionCard(r) {
-  const dims = r.dimensions || {};
-  const models = Object.keys(dims);
-  if (!models.length) return '';
-  const rows = models.flatMap(model => (dims[model] || []).map(d => {
-    const untagged = d.dimension === 'untagged';
-    return `
-      <tr${untagged ? ' style="opacity:.7"' : ''}>
-        <td>${esc(model)}</td>
-        <td><span class="badge">${esc(d.label || d.dimension)}</span>
-          ${untagged ? '<span class="catname" style="font-size:12px"> 未打标签</span>' : `<span class="catname" style="font-size:12px"> ${esc(d.dimension)}</span>`}</td>
-        <td>${d.passed} / ${d.total}${d.skipped ? ` <span class="catname">(跳过 ${d.skipped})</span>` : ''}</td>
-        ${rateCell(d.pass_rate)}
+// 结论卡片：一句话写明排名 / 裁判 / 异常，由后端 compute_conclusion 算好塞进 _conclusion
+function conclusionCard(c) {
+  if (!c || !c.text) return '';
+  return `
+    <div class="card conclusion">
+      <div style="font-weight:600;margin-bottom:6px">本报告结论</div>
+      <div style="font-size:14px;line-height:1.7">${esc(c.text)}</div>
+      ${(c.anomalies || []).length ? `
+        <ul class="anomaly-list">${c.anomalies.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+    </div>`;
+}
+
+// 维度（主行）→ 分类（子行）两层分组：维度是能力面，分类是具体任务类型。
+// 直接按 cases 现算，避免 dimensions / categories 两份聚合口径不一致（老报告只有其一）。
+function buildDimCatGroups(cases) {
+  const byModel = new Map();
+  (cases || []).forEach(c => {
+    const model = c.model || '（无）';
+    const dim = c.dimension || 'untagged';
+    const cat = c.category || '（无）';
+    if (!byModel.has(model)) byModel.set(model, new Map());
+    const dims = byModel.get(model);
+    if (!dims.has(dim)) dims.set(dim, new Map());
+    const cats = dims.get(dim);
+    if (!cats.has(cat)) cats.set(cat, {category: cat, total: 0, passed: 0, skipped: 0});
+    const b = cats.get(cat);
+    b.total++;
+    const st = statusOf(c);
+    if (st === 'pass') b.passed++;
+    else if (st === 'skip') b.skipped++;
+  });
+
+  const out = [];
+  for (const [model, dims] of byModel) {
+    for (const [dim, cats] of dims) {
+      const catList = Array.from(cats.values())
+        .map(c => ({...c, pass_rate: c.total ? c.passed / c.total : 0}))
+        .sort((a, b) => String(a.category).localeCompare(String(b.category)));
+      const total = catList.reduce((a, c) => a + c.total, 0);
+      const passed = catList.reduce((a, c) => a + c.passed, 0);
+      const skipped = catList.reduce((a, c) => a + c.skipped, 0);
+      out.push({model, dimension: dim, total, passed, skipped,
+                pass_rate: total ? passed / total : 0, cats: catList});
+    }
+  }
+  // 按模型名 + 维度顺序稳定输出，避免每次渲染行序跳动
+  return out.sort((a, b) => String(a.model).localeCompare(String(b.model))
+    || String(a.dimension).localeCompare(String(b.dimension)));
+}
+
+function dimCatCard(groups) {
+  if (!groups.length) return '';
+  const rows = groups.map(g => {
+    const untagged = g.dimension === 'untagged';
+    const mainRow = `
+      <tr${untagged ? ' style="opacity:.75"' : ''}>
+        <td>${esc(g.model)}</td>
+        <td><span class="badge">${esc(dimLabel(g.dimension))}</span>
+          ${untagged ? '<span class="catname" style="font-size:12px"> 未打标签</span>' : ''}</td>
+        <td>${g.passed} / ${g.total}${g.skipped ? ` <span class="catname">(跳过 ${g.skipped})</span>` : ''}</td>
+        ${rateCell(g.pass_rate)}
       </tr>`;
-  })).join('');
+    const subRows = g.cats.map(c => `
+      <tr style="background:var(--panel2)">
+        <td></td>
+        <td style="padding-left:22px"><span class="catname">↳ ${esc(c.category)}</span></td>
+        <td>${c.passed} / ${c.total}${c.skipped ? ` <span class="catname">(跳过 ${c.skipped})</span>` : ''}</td>
+        ${rateCell(c.pass_rate)}
+      </tr>`).join('');
+    return mainRow + subRows;
+  }).join('');
   return `
     <div class="card">
-      <div style="font-weight:600;margin-bottom:4px">维度通过率</div>
-      <div class="catname" style="font-size:12px;margin-bottom:10px">按用例的 <code>dimension</code> 标签分组；未打标签的用例归入「未标注」单独一行。标签只影响分组，不参与通过判定。</div>
+      <div style="font-weight:600;margin-bottom:4px">维度 / 分类通过率</div>
+      <div class="hint">模型在哪类任务上强弱：维度是能力面（主行），分类是具体任务类型（子行）。</div>
       <table>
-        <tr><th>模型</th><th>维度</th><th>通过 / 总数</th><th>通过率</th></tr>
-        ${rows || '<tr><td colspan="4" class="catname">（无数据）</td></tr>'}
+        <tr><th>模型</th><th>维度 / 分类</th><th>通过 / 总数</th><th>通过率</th></tr>
+        ${rows}
       </table>
     </div>`;
 }
 
-// 汇总 tab（沿用原详情页）
+// 汇总 tab：结论 → 模型总览 → 维度/分类 → 指标均值（折叠）
 function renderSummaryTab(r) {
   const s = r.summary || [];
-  // categories 形如 {model: [ {category,...} ]}（dict 而非数组，需用 Object.* 遍历）
-  const catEntries = Object.entries(r.categories || {});
+  const groups = buildDimCatGroups(r.cases || []);
   document.getElementById('tabBody').innerHTML = `
+    ${conclusionCard(r._conclusion)}
     <div class="card">
-      <div style="font-weight:600;margin-bottom:10px">模型总览</div>
+      <div style="font-weight:600;margin-bottom:4px">模型总览</div>
+      <div class="hint">各模型整体表现对比。</div>
       <table>
         <tr><th>模型</th><th>通过 / 总数</th><th>通过率</th><th>avg 延迟</th><th>P95</th><th>tokens</th><th>成本</th></tr>
         ${s.map(m => `
@@ -665,31 +855,18 @@ function renderSummaryTab(r) {
           </tr>`).join('')}
       </table>
     </div>
-    ${catEntries.length ? `
-    <div class="card">
-      <div style="font-weight:600;margin-bottom:10px">分类通过率</div>
-      <table>
-        <tr><th>模型</th><th>分类</th><th>通过 / 总数</th><th>通过率</th></tr>
-        ${catEntries.flatMap(([model, rows]) =>
-          (rows || []).map(c => `
-          <tr>
-            <td>${esc(model)}</td>
-            <td><span class="badge">${esc(c.category)}</span></td>
-            <td>${c.passed} / ${c.total}</td>
-            ${rateCell(c.pass_rate)}
-          </tr>`)).join('')}
-      </table>
-    </div>` : ''}
-    ${dimensionCard(r)}
+    ${dimCatCard(groups)}
     ${(s[0] && s[0].metric_avg) ? `
-    <div class="card">
-      <div style="font-weight:600;margin-bottom:10px">指标均值（首个模型）</div>
+    <details class="card">
+      <summary style="font-weight:600">指标均值（首个模型）</summary>
+      <div class="hint" style="margin-top:8px">每种判定方法的健康度，不是模型能力。</div>
       <table>
         ${Object.entries(s[0].metric_avg).map(([k, v]) => `
-          <tr><td><span class="badge">${esc(k)}</span></td><td>${pct(v)}</td>
+          <tr><td><span class="badge">${esc(metricLabel(k))}</span>
+            <span class="catname" style="font-size:12px"> ${esc(k)}</span></td><td>${pct(v)}</td>
           <td><span class="bar" style="width:220px"><i style="width:${(v*100).toFixed(1)}%;background:${rateColor(v)}"></i></span></td></tr>`).join('')}
       </table>
-    </div>` : ''}`;
+    </details>` : ''}`;
 }
 
 // 用例列表 tab：表格 + 工具栏（状态筛选 / 分类下拉 / 搜索）+ 点击行打开抽屉
@@ -877,14 +1054,14 @@ function openDrawer(c) {
           <tr><th>指标</th><th>score</th><th>通过</th><th>详情</th></tr>
           ${c.metrics.map(m => `
             <tr>
-              <td><span class="badge">${esc(m.name)}</span></td>
+              <td><span class="badge" title="${esc(m.name)}">${esc(metricLabel(m.name))}</span></td>
               <td>${m.score != null ? pct(m.score) : '—'}</td>
               <td><span class="badge ${m.passed?'pass':'fail'}">${m.passed?'✓':'✗'}</span></td>
               <td style="white-space:normal">${esc(m.detail || '')}</td>
             </tr>`).join('')}
         </table>` : '<div class="catname">（无）</div>'}
       ${(c.skipped_metrics||[]).length ? `
-        <div class="catname" style="margin-top:8px;font-size:12px">跳过：${esc((c.skipped_metrics||[]).join(', '))}</div>` : ''}
+        <div class="catname" style="margin-top:8px;font-size:12px">跳过：${esc((c.skipped_metrics||[]).map(metricLabel).join(', '))}</div>` : ''}
     </div>
     <div class="info-row" style="margin-top:6px">
       <span>延迟：<b>${c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—'}</b></span>
@@ -1077,6 +1254,10 @@ addEventListener('hashchange', () => main());
 </body>
 </html>"""
 
+PAGE = PAGE_TEMPLATE.replace(
+    "__METRIC_LABELS__", json.dumps(METRIC_LABELS, ensure_ascii=False)
+)
+
 
 def _load_reports():
     """扫描 reports/*.json，返回按时间倒序的元数据列表。"""
@@ -1213,7 +1394,11 @@ class Handler(SimpleHTTPRequestHandler):
             fp = REPORTS_DIR / name
             if fp.suffix == ".json" and fp.is_file():
                 try:
-                    self._json(json.loads(fp.read_text(encoding="utf-8")))
+                    data = json.loads(fp.read_text(encoding="utf-8"))
+                    # 汇总 tab 顶部结论由后端算好，前端只渲染（与静态导出保持一致）
+                    if isinstance(data, dict):
+                        data["_conclusion"] = compute_conclusion(data)
+                    self._json(data)
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
             else:

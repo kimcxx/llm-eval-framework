@@ -31,6 +31,9 @@ def build(reports_dir: Path, out_dir: Path) -> int:
     for item in reports:
         src = app.REPORTS_DIR / item["file"]
         data = json.loads(src.read_text(encoding="utf-8"))
+        # 与动态服务保持一致：汇总 tab 的结论由后端算好后一起导出
+        if isinstance(data, dict):
+            data["_conclusion"] = app.compute_conclusion(data)
         # 文件名保持与动态服务路由一致（api/report/<报告文件名>，本身已含 .json）
         (out / "api" / "report" / item["file"]).write_text(
             json.dumps(data, ensure_ascii=False), encoding="utf-8"
