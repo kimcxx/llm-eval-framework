@@ -111,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         judge_threshold=config.run.judge_threshold,
         judge_client=judge_client,
         prefer_embedding=not args.no_embedding,
+        judge_only_categories=config.run.judge_only_categories,
     )
 
     runner = EvalRunner(

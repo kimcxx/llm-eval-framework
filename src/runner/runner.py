@@ -140,17 +140,21 @@ class EvalRunner:
 
         raise last_error or LLMError("未知调用失败")
 
-    @staticmethod
-    def _run_metrics(metrics: Iterable, case: EvalCase, response: LLMResponse) -> list[MetricResult]:
-        """逐个指标计算；单个指标异常不影响其他指标。"""
+    def _run_metrics(self, metrics: Iterable, case: EvalCase, response: LLMResponse) -> list[MetricResult]:
+        """逐个指标计算；单个指标异常不影响其他指标。
+
+        judge-only 分类（如 qa_open）的通过与否只由裁判指标决定，
+        其余指标仍计算并写入明细，但降级为「仅记录」，不计入通过判定。
+        """
         results: list[MetricResult] = []
         for metric in metrics:
             try:
-                results.append(metric.compute(case, response))
+                result = metric.compute(case, response)
             except Exception as exc:  # noqa: BLE001 - 指标 bug 不应判定为模型失败
-                results.append(
-                    MetricResult(metric.name, 0.0, None, f"指标执行异常：{type(exc).__name__}: {exc}")
+                result = MetricResult(
+                    metric.name, 0.0, None, f"指标执行异常：{type(exc).__name__}: {exc}"
                 )
+            results.append(self.factory.as_record_only(result, case.category))
         return results
 
     def _estimate_cost(self, model_name: str, response: LLMResponse) -> float:

@@ -106,10 +106,21 @@ class RunSettings:
     timeout_s: float = 60.0
     similarity_threshold: float = 0.75
     judge_threshold: float = 4.0
+    # 这些分类只由 LLM 裁判判定：同类用例里的其它指标（如 similarity）
+    # 仍然计算并写进报告明细，但不参与通过/失败判定（仅作记录）。
+    # 背景：开放式问答没有标准答案，字面相似度会把「换个说法但答对了」误判为失败。
+    judge_only_categories: tuple[str, ...] = ("qa_open",)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any] | None) -> RunSettings:
-        return cls(**(raw or {}))
+        raw = dict(raw or {})
+        categories = raw.pop("judge_only_categories", None)
+        if categories is None:
+            return cls(**raw)
+        if isinstance(categories, str):
+            categories = [categories]
+        normalized = tuple(str(item).strip() for item in categories if str(item).strip())
+        return cls(**raw, judge_only_categories=normalized)
 
 
 @dataclass
