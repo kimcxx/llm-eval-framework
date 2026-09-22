@@ -10,6 +10,7 @@ import pytest
 
 from src.metrics.contains import ContainsMetric
 from src.metrics.exact_match import ExactMatchMetric
+from src.metrics.is_json import IsJsonMetric
 from src.metrics.json_valid import JsonValidMetric
 from src.metrics.not_contains import NotContainsMetric
 from src.metrics.normalize import (
@@ -17,12 +18,15 @@ from src.metrics.normalize import (
     extract_final_answer,
     extract_json,
     extract_numbers,
+    normalize_scalar,
     normalize_text,
+    scalar_equal,
     shorten,
     strip_code_fence,
     to_float,
 )
 from src.metrics.registry import MetricFactory, UnknownMetricError
+from src.metrics.schema_match import SchemaMatchMetric
 from src.metrics.similarity import SimilarityMetric
 
 
@@ -245,6 +249,139 @@ class TestJsonValid:
         assert result.passed is True
 
 
+# ========================= is_json：只看格式 ========================= #
+
+
+class TestIsJson:
+    metric = IsJsonMetric()
+
+    def test_pure_json_passes(self, make_case, make_response) -> None:
+        case = make_case(expected={"a": 1}, required_keys=["a"], metrics=["is_json"])
+        result = self.metric.compute(case, make_response('{"a": 1}'))
+        assert result.score == 1.0
+        assert result.passed is True
+
+    def test_json_array_also_counts(self, make_case, make_response) -> None:
+        """只要能被 json.loads 解析即可，不要求是对象。"""
+        case = make_case(metrics=["is_json"])
+        assert self.metric.compute(case, make_response("[1, 2, 3]")).passed is True
+
+    def test_ignores_content_correctness(self, make_case, make_response) -> None:
+        """字段全错但格式合法：is_json 仍然 1，这是与旧 json_valid 的关键差别。"""
+        case = make_case(expected={"a": 1}, required_keys=["a"], metrics=["is_json"])
+        result = self.metric.compute(case, make_response('{"b": 9}'))
+        assert result.score == 1.0
+        assert result.passed is True
+
+    def test_prose_wrapped_json_fails(self, make_case, make_response) -> None:
+        """前后带解释文字时，整段不是合法 JSON，下游 json.loads 会失败。"""
+        case = make_case(metrics=["is_json"])
+        result = self.metric.compute(case, make_response('好的，结果如下：{"a": 1}'))
+        assert result.score == 0.0
+        assert result.passed is False
+
+    def test_code_fence_is_tolerated(self, make_case, make_response) -> None:
+        case = make_case(metrics=["is_json"])
+        assert self.metric.compute(case, make_response('```json\n{"a": 1}\n```')).passed is True
+
+    def test_empty_output_fails(self, make_case, make_response) -> None:
+        case = make_case(metrics=["is_json"])
+        assert self.metric.compute(case, make_response("   ")).passed is False
+
+    def test_describe_mentions_definition(self) -> None:
+        assert "json.loads" in self.metric.describe()
+
+
+# ======================= schema_match：只看字段 ======================== #
+
+
+class TestSchemaMatch:
+    metric = SchemaMatchMetric()
+
+    def test_all_fields_match(self, make_case, make_response) -> None:
+        case = make_case(
+            expected={"name": "张伟", "company": "腾讯"},
+            required_keys=["name", "company"],
+            metrics=["schema_match"],
+        )
+        result = self.metric.compute(
+            case, make_response('{"name": "张伟", "company": "腾讯"}')
+        )
+        assert result.score == 1.0
+        assert result.passed is True
+
+    def test_score_is_hit_ratio(self, make_case, make_response) -> None:
+        case = make_case(
+            expected={"name": "张伟", "company": "腾讯"},
+            required_keys=["name", "company"],
+            metrics=["schema_match"],
+        )
+        result = self.metric.compute(case, make_response('{"name": "张伟"}'))
+        assert result.score == pytest.approx(0.5)
+        assert result.passed is False
+        assert "company=缺失" in result.detail
+
+    def test_threshold_is_configurable(self, make_case, make_response) -> None:
+        """阈值 0.5 时，4 个字段对 3 个应判通过。"""
+        case = make_case(
+            expected={"a": 1, "b": 2, "c": 3, "d": 4},
+            required_keys=["a", "b", "c", "d"],
+            metrics=["schema_match"],
+        )
+        answer = '{"a": 1, "b": 2, "c": 3, "d": 999}'
+        strict = SchemaMatchMetric(threshold=1.0)
+        loose = SchemaMatchMetric(threshold=0.75)
+        assert strict.compute(case, make_response(answer)).passed is False
+        assert loose.compute(case, make_response(answer)).passed is True
+
+    def test_currency_and_thousands_are_normalized(self, make_case, make_response) -> None:
+        """「5999 元」「1,200,000」这类写法应与裸数值相等。"""
+        case = make_case(
+            expected={"price": 5999, "revenue": 1200000},
+            required_keys=["price", "revenue"],
+            metrics=["schema_match"],
+        )
+        result = self.metric.compute(
+            case, make_response('{"price": "5999 元", "revenue": "1,200,000"}')
+        )
+        assert result.score == 1.0
+        assert result.passed is True
+
+    def test_numeric_string_equals_number(self, make_case, make_response) -> None:
+        case = make_case(expected={"count": 123}, required_keys=["count"], metrics=["schema_match"])
+        assert self.metric.compute(case, make_response('{"count": "123"}')).passed is True
+
+    def test_unparsable_output_scores_zero(self, make_case, make_response) -> None:
+        case = make_case(expected={"a": 1}, required_keys=["a"], metrics=["schema_match"])
+        result = self.metric.compute(case, make_response("抱歉，我无法输出 JSON"))
+        assert result.score == 0.0
+        assert result.passed is False
+
+    def test_tolerates_prose_before_json(self, make_case, make_response) -> None:
+        """schema_match 关心内容，因此允许从解释性文字里抽出 JSON。"""
+        case = make_case(expected={"a": 1}, required_keys=["a"], metrics=["schema_match"])
+        result = self.metric.compute(case, make_response('好的，结果如下：{"a": 1}'))
+        assert result.passed is True
+
+    def test_skips_without_schema(self, make_case, make_response) -> None:
+        """没有 required_keys/expected 时无从判定，记为跳过而不是失败。"""
+        case = make_case(expected=None, metrics=["schema_match"])
+        result = self.metric.compute(case, make_response('{"a": 1}'))
+        assert result.passed is None
+
+    def test_key_without_reference_value_counts_as_hit(
+        self, make_case, make_response
+    ) -> None:
+        case = make_case(
+            expected={"a": 1}, required_keys=["a", "extra"], metrics=["schema_match"]
+        )
+        result = self.metric.compute(case, make_response('{"a": 1, "extra": "任意"}'))
+        assert result.score == 1.0
+
+    def test_describe_mentions_threshold(self) -> None:
+        assert "阈值 1" in SchemaMatchMetric(threshold=1.0).describe()
+
+
 # ============================== 语义相似度 ============================== #
 
 
@@ -280,6 +417,25 @@ class TestMetricFactory:
         metrics, skipped = factory.resolve(["exact_match", "contains", "json_valid"])
         assert {m.name for m in metrics} == {"exact_match", "contains", "json_valid"}
         assert skipped == []
+
+    def test_resolves_split_json_metrics(self) -> None:
+        factory = MetricFactory(prefer_embedding=False)
+        metrics, skipped = factory.resolve(["is_json", "schema_match"])
+        assert [m.name for m in metrics] == ["is_json", "schema_match"]
+        assert skipped == []
+
+    def test_schema_match_threshold_is_injected(self) -> None:
+        factory = MetricFactory(schema_match_threshold=0.5, prefer_embedding=False)
+        metric = factory.get("schema_match")
+        assert metric.threshold == 0.5
+
+    def test_notes_disclose_metric_definition_and_threshold(self) -> None:
+        """used 指标的定义与阈值必须写进报告备注，避免口径不明。"""
+        factory = MetricFactory(judge_client=None, prefer_embedding=False)
+        factory.resolve(["is_json", "schema_match"])
+        notes = factory.notes()
+        assert any("is_json" in note and "json.loads" in note for note in notes)
+        assert any("schema_match" in note and "阈值 1" in note for note in notes)
 
     def test_judge_is_skipped_without_judge_client(self) -> None:
         """没有裁判模型时必须如实标记「跳过」，而不是静默通过或算作失败。"""
@@ -337,6 +493,23 @@ class TestNormalizeHelpers:
         assert bigram_jaccard("abcd", "wxyz") == 0.0
         # abcd→{ab,bc,cd}，abdc→{ab,bd,dc}，交集 {ab}，并集 5 个二元组
         assert bigram_jaccard("abcd", "abdc") == pytest.approx(1 / 5)
+
+    def test_normalize_scalar_strips_currency_and_thousands(self) -> None:
+        assert normalize_scalar(" 5999 元 ") == "5999"
+        assert normalize_scalar("￥1,200,000") == "1200000"
+        assert normalize_scalar("12000元人民币") == "12000"
+        assert normalize_scalar(None) == ""
+
+    def test_scalar_equal_prefers_numeric_comparison(self) -> None:
+        assert scalar_equal(5999, "5999 元")
+        assert scalar_equal(1200000, "1,200,000")
+        assert scalar_equal(1.0, "1")
+        assert not scalar_equal(5999, "6999")
+
+    def test_scalar_equal_falls_back_to_text(self) -> None:
+        assert scalar_equal("iOS", "ios")
+        assert scalar_equal("2024-06-11", "2024-06-11")
+        assert not scalar_equal("登录慢", "闪退")
 
     def test_shorten(self) -> None:
         assert shorten(None) == ""

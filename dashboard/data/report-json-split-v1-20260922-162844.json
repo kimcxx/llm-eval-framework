@@ -1,0 +1,2068 @@
+{
+  "started_at": "2026-09-22T16:28:12",
+  "finished_at": "2026-09-22T16:28:44",
+  "duration_s": 32.19,
+  "models": [
+    "mock-baseline",
+    "deepseek-chat",
+    "deepseek-pro"
+  ],
+  "datasets": [
+    "json_extract"
+  ],
+  "case_count": 54,
+  "notes": [
+    "is_json：输出整体可被 json.loads 解析记 1，否则记 0（只看格式，不校验字段内容）",
+    "schema_match：必需字段存在且取值相等记 1，score=匹配字段比例，通过阈值 1（数值比较前先 strip，并去掉千分位逗号与货币单位）",
+    "裁判模型 glm-4.5-air（通过阈值 4/5）",
+    "分类 qa_open 仅由 judge 判定，同用例其它指标只记录不判定"
+  ],
+  "summary": [
+    {
+      "model": "mock-baseline",
+      "total": 18,
+      "passed": 0,
+      "failed": 18,
+      "skipped": 0,
+      "errors": 0,
+      "pass_rate": 0.0,
+      "avg_latency_ms": 0.07,
+      "p95_latency_ms": 0.2,
+      "cost": 0.0,
+      "total_tokens": 1348,
+      "metric_avg": {
+        "is_json": 1.0,
+        "schema_match": 0.0
+      }
+    },
+    {
+      "model": "deepseek-chat",
+      "total": 18,
+      "passed": 14,
+      "failed": 4,
+      "skipped": 0,
+      "errors": 0,
+      "pass_rate": 0.7778,
+      "avg_latency_ms": 2093.68,
+      "p95_latency_ms": 4687.27,
+      "cost": 0.002834,
+      "total_tokens": 3709,
+      "metric_avg": {
+        "is_json": 1.0,
+        "schema_match": 0.9398
+      }
+    },
+    {
+      "model": "deepseek-pro",
+      "total": 18,
+      "passed": 15,
+      "failed": 3,
+      "skipped": 0,
+      "errors": 0,
+      "pass_rate": 0.8333,
+      "avg_latency_ms": 4644.93,
+      "p95_latency_ms": 7556.84,
+      "cost": 0.014229,
+      "total_tokens": 5644,
+      "metric_avg": {
+        "is_json": 1.0,
+        "schema_match": 0.9537
+      }
+    }
+  ],
+  "categories": {
+    "mock-baseline": [
+      {
+        "category": "json_extract",
+        "total": 18,
+        "passed": 0,
+        "failed": 18,
+        "pass_rate": 0.0
+      }
+    ],
+    "deepseek-chat": [
+      {
+        "category": "json_extract",
+        "total": 18,
+        "passed": 14,
+        "failed": 4,
+        "pass_rate": 0.7778
+      }
+    ],
+    "deepseek-pro": [
+      {
+        "category": "json_extract",
+        "total": 18,
+        "passed": 15,
+        "failed": 3,
+        "pass_rate": 0.8333
+      }
+    ]
+  },
+  "dimensions": {
+    "mock-baseline": [
+      {
+        "dimension": "untagged",
+        "label": "未标注",
+        "total": 18,
+        "passed": 0,
+        "failed": 18,
+        "skipped": 0,
+        "pass_rate": 0.0
+      }
+    ],
+    "deepseek-chat": [
+      {
+        "dimension": "untagged",
+        "label": "未标注",
+        "total": 18,
+        "passed": 14,
+        "failed": 4,
+        "skipped": 0,
+        "pass_rate": 0.7778
+      }
+    ],
+    "deepseek-pro": [
+      {
+        "dimension": "untagged",
+        "label": "未标注",
+        "total": 18,
+        "passed": 15,
+        "failed": 3,
+        "skipped": 0,
+        "pass_rate": 0.8333
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "json-001",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取信息，输出 JSON，字段为 name、company、role。\n\n文本：张伟于 2019 年加入腾讯，担任高级后端工程师。",
+      "expected": {
+        "name": "张伟",
+        "company": "腾讯",
+        "role": "高级后端工程师"
+      },
+      "response": "{\"answer\": \"从下面的文本中抽取信息，输出 JSON，字段为 \"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.9,
+      "prompt_tokens": 44,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/3（阈值 1）；name=缺失，company=缺失，role=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-002",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取信息，输出 JSON，字段为 name、birth_year、company、position、city。\n\n文本：李娜，1990 年出生，现任字节跳动产品经理，常驻北京。",
+      "expected": {
+        "name": "李娜",
+        "birth_year": 1990,
+        "company": "字节跳动",
+        "position": "产品经理",
+        "city": "北京"
+      },
+      "response": "{\"answer\": \"从下面的文本中抽取信息，输出 JSON，字段为 \"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.03,
+      "prompt_tokens": 51,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/5（阈值 1）；name=缺失，birth_year=缺失，company=缺失，position=缺失，city=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-003",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取订单信息，输出 JSON，字段为 order_id、order_date、amount、status。\n\n文本：订单号 A10293，于 2024-03-15 下单，金额 399 元，当前状态为已发货。",
+      "expected": {
+        "order_id": "A10293",
+        "order_date": "2024-03-15",
+        "amount": 399,
+        "status": "已发货"
+      },
+      "response": "{\"answer\": \"从下面的文本中抽取订单信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 55,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；order_id=缺失，order_date=缺失，amount=缺失，status=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-004",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的会议纪要中抽取信息，输出 JSON，字段为 meeting、date、location、host。\n\n文本：项目启动会定于 2024-04-01 在三楼会议室召开，由王强主持。",
+      "expected": {
+        "meeting": "项目启动会",
+        "date": "2024-04-01",
+        "location": "三楼会议室",
+        "host": "王强"
+      },
+      "response": "{\"answer\": \"从下面的会议纪要中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 53,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；meeting=缺失，date=缺失，location=缺失，host=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-005",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的商品描述中抽取信息，输出 JSON，字段为 product、brand、price、color。\n\n文本：这款 iPhone 15 由苹果出品，售价 5999 元，颜色为黑色。",
+      "expected": {
+        "product": "iPhone 15",
+        "brand": "苹果",
+        "price": 5999,
+        "color": "黑色"
+      },
+      "response": "{\"answer\": \"从下面的商品描述中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 49,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；product=缺失，brand=缺失，price=缺失，color=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-006",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的简历片段中抽取信息，输出 JSON，字段为 school、major、degree、graduate_year。\n\n文本：申请人毕业于上海交通大学计算机科学专业，取得硕士学位，2022 年毕业。",
+      "expected": {
+        "school": "上海交通大学",
+        "major": "计算机科学",
+        "degree": "硕士",
+        "graduate_year": 2022
+      },
+      "response": "{\"answer\": \"从下面的简历片段中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 61,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；school=缺失，major=缺失，degree=缺失，graduate_year=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-007",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的新闻中抽取信息，输出 JSON，字段为 agency、launch_date、mission、site。\n\n文本：中国航天于 2023-05-30 在酒泉卫星发射中心成功发射神舟十六号载人飞船。",
+      "expected": {
+        "agency": "中国航天",
+        "launch_date": "2023-05-30",
+        "mission": "神舟十六号",
+        "site": "酒泉卫星发射中心"
+      },
+      "response": "{\"answer\": \"从下面的新闻中抽取信息，输出 JSON，字段为 \"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 59,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；agency=缺失，launch_date=缺失，mission=缺失，site=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-008",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的票据文本中抽取信息，输出 JSON，字段为 invoice_type、tax_id、amount。\n\n文本：这是一张增值税专用发票，纳税人识别号 91310000MA1K，价税合计 12000 元。",
+      "expected": {
+        "invoice_type": "增值税专用发票",
+        "tax_id": "91310000MA1K",
+        "amount": 12000
+      },
+      "response": "{\"answer\": \"从下面的票据文本中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 57,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/3（阈值 1）；invoice_type=缺失，tax_id=缺失，amount=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-009",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的用户反馈中抽取信息，输出 JSON，字段为 issue、severity、platform、report_date。\n\n文本：用户在 iOS 端反馈登录很慢，严重程度为高，反馈日期是 2024-06-11。",
+      "expected": {
+        "issue": "登录慢",
+        "severity": "高",
+        "platform": "iOS",
+        "report_date": "2024-06-11"
+      },
+      "response": "{\"answer\": \"从下面的用户反馈中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.03,
+      "prompt_tokens": 57,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；issue=缺失，severity=缺失，platform=缺失，report_date=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-010",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的地址中抽取信息，输出 JSON，字段为 province、city、district、street。\n\n文本：广东省深圳市南山区科技园路 15 号。",
+      "expected": {
+        "province": "广东省",
+        "city": "深圳市",
+        "district": "南山区",
+        "street": "科技园路 15 号"
+      },
+      "response": "{\"answer\": \"从下面的地址中抽取信息，输出 JSON，字段为 \"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 43,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；province=缺失，city=缺失，district=缺失，street=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-011",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的病历文本中抽取信息，输出 JSON，字段为 diagnosis、drug、frequency。\n\n文本：患者确诊为 2 型糖尿病，医嘱服用二甲双胍，每日两次。",
+      "expected": {
+        "diagnosis": "2 型糖尿病",
+        "drug": "二甲双胍",
+        "frequency": "每日两次"
+      },
+      "response": "{\"answer\": \"从下面的病历文本中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.03,
+      "prompt_tokens": 51,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/3（阈值 1）；diagnosis=缺失，drug=缺失，frequency=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-012",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的合同摘要中抽取信息，输出 JSON，字段为 party_a、party_b、duration_months、amount。\n\n文本：本合同甲方为甲方公司，乙方为乙方公司，服务期 12 个月，合同金额 50000 元。",
+      "expected": {
+        "party_a": "甲方公司",
+        "party_b": "乙方公司",
+        "duration_months": 12,
+        "amount": 50000
+      },
+      "response": "{\"answer\": \"从下面的合同摘要中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 63,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；party_a=缺失，party_b=缺失，duration_months=缺失，amount=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-013",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的接口描述中抽取信息，输出 JSON，字段为 path、method、status_code、param。\n\n文本：接口 /v1/users 使用 GET 方法请求，成功时返回 200，必填参数为 user_id。",
+      "expected": {
+        "path": "/v1/users",
+        "method": "GET",
+        "status_code": 200,
+        "param": "user_id"
+      },
+      "response": "{\"answer\": \"从下面的接口描述中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 56,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；path=缺失，method=缺失，status_code=缺失，param=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-014",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的天气播报中抽取信息，输出 JSON，字段为 city、weather、temp_low、temp_high。\n\n文本：杭州今天小雨，最低气温 18 度，最高气温 22 度。",
+      "expected": {
+        "city": "杭州",
+        "weather": "小雨",
+        "temp_low": 18,
+        "temp_high": 22
+      },
+      "response": "{\"answer\": \"从下面的天气播报中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.07,
+      "prompt_tokens": 49,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；city=缺失，weather=缺失，temp_low=缺失，temp_high=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-015",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的日志中抽取信息，输出 JSON，字段为 level、error_type、service、date。\n\n文本：2024-07-02 记录到 ERROR：user-service 出现 timeout 异常。",
+      "expected": {
+        "level": "ERROR",
+        "error_type": "timeout",
+        "service": "user-service",
+        "date": "2024-07-02"
+      },
+      "response": "{\"answer\": \"从下面的日志中抽取信息，输出 JSON，字段为 \"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 45,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/4（阈值 1）；level=缺失，error_type=缺失，service=缺失，date=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-016",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的财报摘要中抽取信息，输出 JSON，字段为 revenue、net_profit、period。\n\n文本：2024 年第二季度营业收入 1200000 元，净利润 180000 元。",
+      "expected": {
+        "revenue": 1200000,
+        "net_profit": 180000,
+        "period": "2024Q2"
+      },
+      "response": "{\"answer\": \"从下面的财报摘要中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 49,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/3（阈值 1）；revenue=缺失，net_profit=缺失，period=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-017",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的书籍介绍中抽取信息，输出 JSON，字段为 title、author、publish_year。\n\n文本：《人类简史》由尤瓦尔·赫拉利所著，2014 年首次出版。",
+      "expected": {
+        "title": "人类简史",
+        "author": "尤瓦尔·赫拉利",
+        "publish_year": 2014
+      },
+      "response": "{\"answer\": \"从下面的书籍介绍中抽取信息，输出 JSON，字段\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.01,
+      "prompt_tokens": 49,
+      "completion_tokens": 22,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/3（阈值 1）；title=缺失，author=缺失，publish_year=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-018",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "mock-baseline",
+      "dimension": null,
+      "prompt": "从下面的评论中抽取信息，输出 JSON，字段为 sentiment、topic、urgency。\n\n文本：这个功能又出问题了，非常影响使用，希望尽快修复——整体情绪负面，主题是功能故障，紧急程度高。",
+      "expected": {
+        "sentiment": "负面",
+        "topic": "功能故障",
+        "urgency": "高"
+      },
+      "response": "{\"answer\": \"从下面的评论中抽取信息，输出 JSON，字段为 \"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.02,
+      "prompt_tokens": 67,
+      "completion_tokens": 21,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.0,
+          "passed": false,
+          "detail": "字段匹配 0/3（阈值 1）；sentiment=缺失，topic=缺失，urgency=缺失"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-001",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取信息，输出 JSON，字段为 name、company、role。\n\n文本：张伟于 2019 年加入腾讯，担任高级后端工程师。",
+      "expected": {
+        "name": "张伟",
+        "company": "腾讯",
+        "role": "高级后端工程师"
+      },
+      "response": "{\"name\":\"张伟\",\"company\":\"腾讯\",\"role\":\"高级后端工程师\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4680.92,
+      "prompt_tokens": 88,
+      "completion_tokens": 72,
+      "cost": 0.000116,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；name=✓，company=✓，role=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-002",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取信息，输出 JSON，字段为 name、birth_year、company、position、city。\n\n文本：李娜，1990 年出生，现任字节跳动产品经理，常驻北京。",
+      "expected": {
+        "name": "李娜",
+        "birth_year": 1990,
+        "company": "字节跳动",
+        "position": "产品经理",
+        "city": "北京"
+      },
+      "response": "{\"name\": \"李娜\", \"birth_year\": 1990, \"company\": \"字节跳动\", \"position\": \"产品经理\", \"city\": \"北京\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4723.25,
+      "prompt_tokens": 96,
+      "completion_tokens": 36,
+      "cost": 8.4e-05,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 5/5（阈值 1）；name=✓，birth_year=✓，company=✓，position=✓，city=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-003",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取订单信息，输出 JSON，字段为 order_id、order_date、amount、status。\n\n文本：订单号 A10293，于 2024-03-15 下单，金额 399 元，当前状态为已发货。",
+      "expected": {
+        "order_id": "A10293",
+        "order_date": "2024-03-15",
+        "amount": 399,
+        "status": "已发货"
+      },
+      "response": "{\"order_id\": \"A10293\", \"order_date\": \"2024-03-15\", \"amount\": 399, \"status\": \"已发货\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4603.73,
+      "prompt_tokens": 106,
+      "completion_tokens": 62,
+      "cost": 0.000115,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；order_id=✓，order_date=✓，amount=✓，status=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-004",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的会议纪要中抽取信息，输出 JSON，字段为 meeting、date、location、host。\n\n文本：项目启动会定于 2024-04-01 在三楼会议室召开，由王强主持。",
+      "expected": {
+        "meeting": "项目启动会",
+        "date": "2024-04-01",
+        "location": "三楼会议室",
+        "host": "王强"
+      },
+      "response": "{\"meeting\":\"项目启动会\",\"date\":\"2024-04-01\",\"location\":\"三楼会议室\",\"host\":\"王强\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4639.94,
+      "prompt_tokens": 98,
+      "completion_tokens": 107,
+      "cost": 0.000156,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；meeting=✓，date=✓，location=✓，host=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-005",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的商品描述中抽取信息，输出 JSON，字段为 product、brand、price、color。\n\n文本：这款 iPhone 15 由苹果出品，售价 5999 元，颜色为黑色。",
+      "expected": {
+        "product": "iPhone 15",
+        "brand": "苹果",
+        "price": 5999,
+        "color": "黑色"
+      },
+      "response": "{\"product\":\"iPhone 15\",\"brand\":\"苹果\",\"price\":\"5999 元\",\"color\":\"黑色\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1898.75,
+      "prompt_tokens": 95,
+      "completion_tokens": 238,
+      "cost": 0.000286,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；product=✓，brand=✓，price=✓，color=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-006",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的简历片段中抽取信息，输出 JSON，字段为 school、major、degree、graduate_year。\n\n文本：申请人毕业于上海交通大学计算机科学专业，取得硕士学位，2022 年毕业。",
+      "expected": {
+        "school": "上海交通大学",
+        "major": "计算机科学",
+        "degree": "硕士",
+        "graduate_year": 2022
+      },
+      "response": "{\"school\":\"上海交通大学\",\"major\":\"计算机科学\",\"degree\":\"硕士学位\",\"graduate_year\":\"2022\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 1051.87,
+      "prompt_tokens": 93,
+      "completion_tokens": 93,
+      "cost": 0.00014,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.75,
+          "passed": false,
+          "detail": "字段匹配 3/4（阈值 1）；school=✓，major=✓，degree=硕士学位≠硕士，graduate_year=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-007",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的新闻中抽取信息，输出 JSON，字段为 agency、launch_date、mission、site。\n\n文本：中国航天于 2023-05-30 在酒泉卫星发射中心成功发射神舟十六号载人飞船。",
+      "expected": {
+        "agency": "中国航天",
+        "launch_date": "2023-05-30",
+        "mission": "神舟十六号",
+        "site": "酒泉卫星发射中心"
+      },
+      "response": "{\"agency\":\"中国航天\",\"launch_date\":\"2023-05-30\",\"mission\":\"神舟十六号载人飞船\",\"site\":\"酒泉卫星发射中心\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 1463.14,
+      "prompt_tokens": 103,
+      "completion_tokens": 126,
+      "cost": 0.000178,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.75,
+          "passed": false,
+          "detail": "字段匹配 3/4（阈值 1）；agency=✓，launch_date=✓，mission=神舟十六号载人飞船≠神舟十六号，site=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-008",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的票据文本中抽取信息，输出 JSON，字段为 invoice_type、tax_id、amount。\n\n文本：这是一张增值税专用发票，纳税人识别号 91310000MA1K，价税合计 12000 元。",
+      "expected": {
+        "invoice_type": "增值税专用发票",
+        "tax_id": "91310000MA1K",
+        "amount": 12000
+      },
+      "response": "{\"invoice_type\":\"增值税专用发票\",\"tax_id\":\"91310000MA1K\",\"amount\":12000}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1543.46,
+      "prompt_tokens": 101,
+      "completion_tokens": 109,
+      "cost": 0.00016,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；invoice_type=✓，tax_id=✓，amount=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-009",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的用户反馈中抽取信息，输出 JSON，字段为 issue、severity、platform、report_date。\n\n文本：用户在 iOS 端反馈登录很慢，严重程度为高，反馈日期是 2024-06-11。",
+      "expected": {
+        "issue": "登录慢",
+        "severity": "高",
+        "platform": "iOS",
+        "report_date": "2024-06-11"
+      },
+      "response": "{\"issue\":\"登录很慢\",\"severity\":\"高\",\"platform\":\"iOS\",\"report_date\":\"2024-06-11\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 1447.08,
+      "prompt_tokens": 102,
+      "completion_tokens": 109,
+      "cost": 0.00016,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.75,
+          "passed": false,
+          "detail": "字段匹配 3/4（阈值 1）；issue=登录很慢≠登录慢，severity=✓，platform=✓，report_date=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-010",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的地址中抽取信息，输出 JSON，字段为 province、city、district、street。\n\n文本：广东省深圳市南山区科技园路 15 号。",
+      "expected": {
+        "province": "广东省",
+        "city": "深圳市",
+        "district": "南山区",
+        "street": "科技园路 15 号"
+      },
+      "response": "{\"province\":\"广东省\",\"city\":\"深圳市\",\"district\":\"南山区\",\"street\":\"科技园路15号\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1547.76,
+      "prompt_tokens": 86,
+      "completion_tokens": 163,
+      "cost": 0.000206,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；province=✓，city=✓，district=✓，street=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-011",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的病历文本中抽取信息，输出 JSON，字段为 diagnosis、drug、frequency。\n\n文本：患者确诊为 2 型糖尿病，医嘱服用二甲双胍，每日两次。",
+      "expected": {
+        "diagnosis": "2 型糖尿病",
+        "drug": "二甲双胍",
+        "frequency": "每日两次"
+      },
+      "response": "{\"diagnosis\":\"2型糖尿病\",\"drug\":\"二甲双胍\",\"frequency\":\"每日两次\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1238.6,
+      "prompt_tokens": 92,
+      "completion_tokens": 66,
+      "cost": 0.000112,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；diagnosis=✓，drug=✓，frequency=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-012",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的合同摘要中抽取信息，输出 JSON，字段为 party_a、party_b、duration_months、amount。\n\n文本：本合同甲方为甲方公司，乙方为乙方公司，服务期 12 个月，合同金额 50000 元。",
+      "expected": {
+        "party_a": "甲方公司",
+        "party_b": "乙方公司",
+        "duration_months": 12,
+        "amount": 50000
+      },
+      "response": "{\"party_a\":\"甲方公司\",\"party_b\":\"乙方公司\",\"duration_months\":12,\"amount\":50000}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1280.42,
+      "prompt_tokens": 105,
+      "completion_tokens": 117,
+      "cost": 0.00017,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；party_a=✓，party_b=✓，duration_months=✓，amount=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-013",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的接口描述中抽取信息，输出 JSON，字段为 path、method、status_code、param。\n\n文本：接口 /v1/users 使用 GET 方法请求，成功时返回 200，必填参数为 user_id。",
+      "expected": {
+        "path": "/v1/users",
+        "method": "GET",
+        "status_code": 200,
+        "param": "user_id"
+      },
+      "response": "{\"path\":\"/v1/users\",\"method\":\"GET\",\"status_code\":200,\"param\":\"user_id\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1245.48,
+      "prompt_tokens": 101,
+      "completion_tokens": 125,
+      "cost": 0.000176,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；path=✓，method=✓，status_code=✓，param=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-014",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的天气播报中抽取信息，输出 JSON，字段为 city、weather、temp_low、temp_high。\n\n文本：杭州今天小雨，最低气温 18 度，最高气温 22 度。",
+      "expected": {
+        "city": "杭州",
+        "weather": "小雨",
+        "temp_low": 18,
+        "temp_high": 22
+      },
+      "response": "{\"city\":\"杭州\",\"weather\":\"小雨\",\"temp_low\":18,\"temp_high\":22}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 838.78,
+      "prompt_tokens": 98,
+      "completion_tokens": 56,
+      "cost": 0.000105,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；city=✓，weather=✓，temp_low=✓，temp_high=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-015",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的日志中抽取信息，输出 JSON，字段为 level、error_type、service、date。\n\n文本：2024-07-02 记录到 ERROR：user-service 出现 timeout 异常。",
+      "expected": {
+        "level": "ERROR",
+        "error_type": "timeout",
+        "service": "user-service",
+        "date": "2024-07-02"
+      },
+      "response": "{\"level\":\"ERROR\",\"error_type\":\"timeout\",\"service\":\"user-service\",\"date\":\"2024-07-02\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1293.61,
+      "prompt_tokens": 94,
+      "completion_tokens": 93,
+      "cost": 0.00014,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；level=✓，error_type=✓，service=✓，date=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-016",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的财报摘要中抽取信息，输出 JSON，字段为 revenue、net_profit、period。\n\n文本：2024 年第二季度营业收入 1200000 元，净利润 180000 元。",
+      "expected": {
+        "revenue": 1200000,
+        "net_profit": 180000,
+        "period": "2024Q2"
+      },
+      "response": "{\"revenue\":1200000,\"net_profit\":180000,\"period\":\"2024年第二季度\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 1360.09,
+      "prompt_tokens": 96,
+      "completion_tokens": 141,
+      "cost": 0.000189,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.6667,
+          "passed": false,
+          "detail": "字段匹配 2/3（阈值 1）；revenue=✓，net_profit=✓，period=2024年第二季度≠2024Q2"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-017",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的书籍介绍中抽取信息，输出 JSON，字段为 title、author、publish_year。\n\n文本：《人类简史》由尤瓦尔·赫拉利所著，2014 年首次出版。",
+      "expected": {
+        "title": "人类简史",
+        "author": "尤瓦尔·赫拉利",
+        "publish_year": 2014
+      },
+      "response": "{\"title\":\"人类简史\",\"author\":\"尤瓦尔·赫拉利\",\"publish_year\":2014}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1207.03,
+      "prompt_tokens": 96,
+      "completion_tokens": 96,
+      "cost": 0.000144,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；title=✓，author=✓，publish_year=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-018",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-chat",
+      "dimension": null,
+      "prompt": "从下面的评论中抽取信息，输出 JSON，字段为 sentiment、topic、urgency。\n\n文本：这个功能又出问题了，非常影响使用，希望尽快修复——整体情绪负面，主题是功能故障，紧急程度高。",
+      "expected": {
+        "sentiment": "负面",
+        "topic": "功能故障",
+        "urgency": "高"
+      },
+      "response": "{\"sentiment\":\"负面\",\"topic\":\"功能故障\",\"urgency\":\"高\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 1622.34,
+      "prompt_tokens": 99,
+      "completion_tokens": 151,
+      "cost": 0.000201,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；sentiment=✓，topic=✓，urgency=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-001",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取信息，输出 JSON，字段为 name、company、role。\n\n文本：张伟于 2019 年加入腾讯，担任高级后端工程师。",
+      "expected": {
+        "name": "张伟",
+        "company": "腾讯",
+        "role": "高级后端工程师"
+      },
+      "response": "{\"name\":\"张伟\",\"company\":\"腾讯\",\"role\":\"高级后端工程师\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 5916.23,
+      "prompt_tokens": 141,
+      "completion_tokens": 118,
+      "cost": 0.000636,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；name=✓，company=✓，role=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-002",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取信息，输出 JSON，字段为 name、birth_year、company、position、city。\n\n文本：李娜，1990 年出生，现任字节跳动产品经理，常驻北京。",
+      "expected": {
+        "name": "李娜",
+        "birth_year": 1990,
+        "company": "字节跳动",
+        "position": "产品经理",
+        "city": "北京"
+      },
+      "response": "{\"name\":\"李娜\",\"birth_year\":\"1990\",\"company\":\"字节跳动\",\"position\":\"产品经理\",\"city\":\"北京\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 8313.13,
+      "prompt_tokens": 149,
+      "completion_tokens": 206,
+      "cost": 0.000916,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 5/5（阈值 1）；name=✓，birth_year=✓，company=✓，position=✓，city=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-003",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的文本中抽取订单信息，输出 JSON，字段为 order_id、order_date、amount、status。\n\n文本：订单号 A10293，于 2024-03-15 下单，金额 399 元，当前状态为已发货。",
+      "expected": {
+        "order_id": "A10293",
+        "order_date": "2024-03-15",
+        "amount": 399,
+        "status": "已发货"
+      },
+      "response": "{\"order_id\":\"A10293\",\"order_date\":\"2024-03-15\",\"amount\":399,\"status\":\"已发货\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 7423.37,
+      "prompt_tokens": 159,
+      "completion_tokens": 200,
+      "cost": 0.000918,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；order_id=✓，order_date=✓，amount=✓，status=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-004",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的会议纪要中抽取信息，输出 JSON，字段为 meeting、date、location、host。\n\n文本：项目启动会定于 2024-04-01 在三楼会议室召开，由王强主持。",
+      "expected": {
+        "meeting": "项目启动会",
+        "date": "2024-04-01",
+        "location": "三楼会议室",
+        "host": "王强"
+      },
+      "response": "{\"meeting\":\"项目启动会\",\"date\":\"2024-04-01\",\"location\":\"三楼会议室\",\"host\":\"王强\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 7411.55,
+      "prompt_tokens": 151,
+      "completion_tokens": 205,
+      "cost": 0.000917,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；meeting=✓，date=✓，location=✓，host=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-005",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的商品描述中抽取信息，输出 JSON，字段为 product、brand、price、color。\n\n文本：这款 iPhone 15 由苹果出品，售价 5999 元，颜色为黑色。",
+      "expected": {
+        "product": "iPhone 15",
+        "brand": "苹果",
+        "price": 5999,
+        "color": "黑色"
+      },
+      "response": "{\"product\":\"iPhone 15\",\"brand\":\"苹果\",\"price\":\"5999 元\",\"color\":\"黑色\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4715.51,
+      "prompt_tokens": 148,
+      "completion_tokens": 197,
+      "cost": 0.000887,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；product=✓，brand=✓，price=✓，color=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-006",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的简历片段中抽取信息，输出 JSON，字段为 school、major、degree、graduate_year。\n\n文本：申请人毕业于上海交通大学计算机科学专业，取得硕士学位，2022 年毕业。",
+      "expected": {
+        "school": "上海交通大学",
+        "major": "计算机科学",
+        "degree": "硕士",
+        "graduate_year": 2022
+      },
+      "response": "{\"school\":\"上海交通大学\",\"major\":\"计算机科学\",\"degree\":\"硕士\",\"graduate_year\":2022}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 3463.24,
+      "prompt_tokens": 146,
+      "completion_tokens": 137,
+      "cost": 0.000703,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；school=✓，major=✓，degree=✓，graduate_year=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-007",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的新闻中抽取信息，输出 JSON，字段为 agency、launch_date、mission、site。\n\n文本：中国航天于 2023-05-30 在酒泉卫星发射中心成功发射神舟十六号载人飞船。",
+      "expected": {
+        "agency": "中国航天",
+        "launch_date": "2023-05-30",
+        "mission": "神舟十六号",
+        "site": "酒泉卫星发射中心"
+      },
+      "response": "{\"agency\":\"中国航天\",\"launch_date\":\"2023-05-30\",\"mission\":\"神舟十六号载人飞船\",\"site\":\"酒泉卫星发射中心\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 5768.08,
+      "prompt_tokens": 156,
+      "completion_tokens": 245,
+      "cost": 0.001047,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.75,
+          "passed": false,
+          "detail": "字段匹配 3/4（阈值 1）；agency=✓，launch_date=✓，mission=神舟十六号载人飞船≠神舟十六号，site=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-008",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的票据文本中抽取信息，输出 JSON，字段为 invoice_type、tax_id、amount。\n\n文本：这是一张增值税专用发票，纳税人识别号 91310000MA1K，价税合计 12000 元。",
+      "expected": {
+        "invoice_type": "增值税专用发票",
+        "tax_id": "91310000MA1K",
+        "amount": 12000
+      },
+      "response": "{\"invoice_type\":\"增值税专用发票\",\"tax_id\":\"91310000MA1K\",\"amount\":12000}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4812.73,
+      "prompt_tokens": 154,
+      "completion_tokens": 215,
+      "cost": 0.000953,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；invoice_type=✓，tax_id=✓，amount=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-009",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的用户反馈中抽取信息，输出 JSON，字段为 issue、severity、platform、report_date。\n\n文本：用户在 iOS 端反馈登录很慢，严重程度为高，反馈日期是 2024-06-11。",
+      "expected": {
+        "issue": "登录慢",
+        "severity": "高",
+        "platform": "iOS",
+        "report_date": "2024-06-11"
+      },
+      "response": "{\"issue\": \"登录很慢\", \"severity\": \"高\", \"platform\": \"iOS\", \"report_date\": \"2024-06-11\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 2500.66,
+      "prompt_tokens": 155,
+      "completion_tokens": 111,
+      "cost": 0.000643,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.75,
+          "passed": false,
+          "detail": "字段匹配 3/4（阈值 1）；issue=登录很慢≠登录慢，severity=✓，platform=✓，report_date=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-010",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的地址中抽取信息，输出 JSON，字段为 province、city、district、street。\n\n文本：广东省深圳市南山区科技园路 15 号。",
+      "expected": {
+        "province": "广东省",
+        "city": "深圳市",
+        "district": "南山区",
+        "street": "科技园路 15 号"
+      },
+      "response": "{\"province\":\"广东省\",\"city\":\"深圳市\",\"district\":\"南山区\",\"street\":\"科技园路 15 号\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 2913.8,
+      "prompt_tokens": 139,
+      "completion_tokens": 125,
+      "cost": 0.000653,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；province=✓，city=✓，district=✓，street=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-011",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的病历文本中抽取信息，输出 JSON，字段为 diagnosis、drug、frequency。\n\n文本：患者确诊为 2 型糖尿病，医嘱服用二甲双胍，每日两次。",
+      "expected": {
+        "diagnosis": "2 型糖尿病",
+        "drug": "二甲双胍",
+        "frequency": "每日两次"
+      },
+      "response": "{\"diagnosis\":\"2 型糖尿病\",\"drug\":\"二甲双胍\",\"frequency\":\"每日两次\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 3130.53,
+      "prompt_tokens": 145,
+      "completion_tokens": 118,
+      "cost": 0.000644,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；diagnosis=✓，drug=✓，frequency=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-012",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的合同摘要中抽取信息，输出 JSON，字段为 party_a、party_b、duration_months、amount。\n\n文本：本合同甲方为甲方公司，乙方为乙方公司，服务期 12 个月，合同金额 50000 元。",
+      "expected": {
+        "party_a": "甲方公司",
+        "party_b": "乙方公司",
+        "duration_months": 12,
+        "amount": 50000
+      },
+      "response": "{\"party_a\":\"甲方公司\",\"party_b\":\"乙方公司\",\"duration_months\":12,\"amount\":50000}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 3629.06,
+      "prompt_tokens": 158,
+      "completion_tokens": 129,
+      "cost": 0.000703,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；party_a=✓，party_b=✓，duration_months=✓，amount=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-013",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的接口描述中抽取信息，输出 JSON，字段为 path、method、status_code、param。\n\n文本：接口 /v1/users 使用 GET 方法请求，成功时返回 200，必填参数为 user_id。",
+      "expected": {
+        "path": "/v1/users",
+        "method": "GET",
+        "status_code": 200,
+        "param": "user_id"
+      },
+      "response": "{\"path\":\"/v1/users\",\"method\":\"GET\",\"status_code\":200,\"param\":\"user_id\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4369.08,
+      "prompt_tokens": 154,
+      "completion_tokens": 194,
+      "cost": 0.00089,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；path=✓，method=✓，status_code=✓，param=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-014",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的天气播报中抽取信息，输出 JSON，字段为 city、weather、temp_low、temp_high。\n\n文本：杭州今天小雨，最低气温 18 度，最高气温 22 度。",
+      "expected": {
+        "city": "杭州",
+        "weather": "小雨",
+        "temp_low": 18,
+        "temp_high": 22
+      },
+      "response": "{\"city\":\"杭州\",\"weather\":\"小雨\",\"temp_low\":18,\"temp_high\":22}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 3305.28,
+      "prompt_tokens": 151,
+      "completion_tokens": 144,
+      "cost": 0.000734,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；city=✓，weather=✓，temp_low=✓，temp_high=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-015",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的日志中抽取信息，输出 JSON，字段为 level、error_type、service、date。\n\n文本：2024-07-02 记录到 ERROR：user-service 出现 timeout 异常。",
+      "expected": {
+        "level": "ERROR",
+        "error_type": "timeout",
+        "service": "user-service",
+        "date": "2024-07-02"
+      },
+      "response": "{\"level\":\"ERROR\",\"error_type\":\"timeout\",\"service\":\"user-service\",\"date\":\"2024-07-02\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 3729.48,
+      "prompt_tokens": 147,
+      "completion_tokens": 125,
+      "cost": 0.000669,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 4/4（阈值 1）；level=✓，error_type=✓，service=✓，date=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-016",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的财报摘要中抽取信息，输出 JSON，字段为 revenue、net_profit、period。\n\n文本：2024 年第二季度营业收入 1200000 元，净利润 180000 元。",
+      "expected": {
+        "revenue": 1200000,
+        "net_profit": 180000,
+        "period": "2024Q2"
+      },
+      "response": "{\"revenue\": 1200000, \"net_profit\": 180000, \"period\": \"2024年第二季度\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 4096.54,
+      "prompt_tokens": 149,
+      "completion_tokens": 164,
+      "cost": 0.00079,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 0.6667,
+          "passed": false,
+          "detail": "字段匹配 2/3（阈值 1）；revenue=✓，net_profit=✓，period=2024年第二季度≠2024Q2"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-017",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的书籍介绍中抽取信息，输出 JSON，字段为 title、author、publish_year。\n\n文本：《人类简史》由尤瓦尔·赫拉利所著，2014 年首次出版。",
+      "expected": {
+        "title": "人类简史",
+        "author": "尤瓦尔·赫拉利",
+        "publish_year": 2014
+      },
+      "response": "{\"title\":\"人类简史\",\"author\":\"尤瓦尔·赫拉利\",\"publish_year\":\"2014\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 3477.48,
+      "prompt_tokens": 149,
+      "completion_tokens": 124,
+      "cost": 0.00067,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；title=✓，author=✓，publish_year=✓"
+        }
+      ],
+      "skipped_metrics": []
+    },
+    {
+      "case_id": "json-018",
+      "category": "json_extract",
+      "dataset": "json_extract",
+      "model": "deepseek-pro",
+      "dimension": null,
+      "prompt": "从下面的评论中抽取信息，输出 JSON，字段为 sentiment、topic、urgency。\n\n文本：这个功能又出问题了，非常影响使用，希望尽快修复——整体情绪负面，主题是功能故障，紧急程度高。",
+      "expected": {
+        "sentiment": "负面",
+        "topic": "功能故障",
+        "urgency": "高"
+      },
+      "response": "{\"sentiment\":\"负面\",\"topic\":\"功能故障\",\"urgency\":\"高\"}",
+      "passed": true,
+      "error": null,
+      "latency_ms": 4632.95,
+      "prompt_tokens": 152,
+      "completion_tokens": 184,
+      "cost": 0.000856,
+      "metrics": [
+        {
+          "name": "is_json",
+          "score": 1.0,
+          "passed": true,
+          "detail": "输出是合法 JSON（dict）"
+        },
+        {
+          "name": "schema_match",
+          "score": 1.0,
+          "passed": true,
+          "detail": "字段匹配 3/3（阈值 1）；sentiment=✓，topic=✓，urgency=✓"
+        }
+      ],
+      "skipped_metrics": []
+    }
+  ]
+}

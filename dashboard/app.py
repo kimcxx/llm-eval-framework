@@ -250,7 +250,9 @@ def compute_banner(curr_entry, curr_doc, base_entry=None, base_doc=None):
 
 # 指标名 → 中文标签（用例抽屉里展示用；未收录的指标原样显示，不会变空白）
 METRIC_LABELS = {
-    'json_valid': '格式校验',
+    'json_valid': '格式校验',  # 旧指标，历史报告仍在，保留标签避免显示空白
+    'is_json': 'JSON 解析',
+    'schema_match': '字段匹配',
     'exact_match': '精确匹配',
     'similarity': '语义相似度',
     'judge': 'LLM 裁判',
