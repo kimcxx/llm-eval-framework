@@ -126,11 +126,44 @@ def normalize_scalar(value: Any) -> str:
     return normalize_text(_strip_numeric_noise(value))
 
 
+# 季度写法：同一时间段的多种合法写法（「2024Q2」「2024年第二季度」「2024年第2季度」）
+# 在归一化层做格式互转，避免因写法不同被判成字段取值错误。
+# 只做格式归一，不做语义包含 —— 例如「神舟十六号载人飞船」与「神舟十六号」
+# 的等价关系只能显式写在用例的 expected 列表里，归一化层不会把二者判等。
+_QUARTER_CN_DIGITS = {"一": "1", "二": "2", "三": "3", "四": "4", "1": "1", "2": "2", "3": "3", "4": "4"}
+
+_QUARTER_RE = re.compile(
+    r"(?P<year>(?:19|20)\d{2})\s*年?\s*(?:"
+    r"第?\s*(?P<cn>[一二三四1-4])\s*季度"
+    r"|q(?P<q>[1-4])"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def normalize_quarter(value: Any) -> str | None:
+    """把季度文本统一成 `YYYYQn`，非季度文本返回 None。
+
+    例："2024Q2" / "2024年第二季度" / "2024 年第 2 季度" → "2024Q2"。
+    """
+    if value is None:
+        return None
+    text = unicodedata.normalize("NFKC", str(value)).strip()
+    match = _QUARTER_RE.search(text)
+    if not match:
+        return None
+    digit = _QUARTER_CN_DIGITS.get(match.group("cn") or match.group("q") or "")
+    if digit is None:
+        return None
+    return f"{match.group('year')}Q{digit}"
+
+
 def scalar_equal(expected: Any, actual: Any) -> bool:
     """判断两个标量是否相等：优先按数值比，数值不可比时再按归一化文本比。
 
     数值优先是因为 5999 与 "5999"、"5,999.0" 都应该是同一个值；
-    文本兜底则覆盖 "iOS"、"2024-06-11" 这类非数值字段。
+    文本兜底则覆盖 "iOS"、"2024-06-11" 这类非数值字段。季度这类
+    同一时间的不同写法（2024Q2 / 2024年第二季度）也会先统一格式再比。
     注意数值比较必须在抹掉标点（含小数点）之前进行，否则 1.0 会被文本归一化成 10。
     """
     want_raw = _strip_numeric_noise(expected)
@@ -142,6 +175,12 @@ def scalar_equal(expected: Any, actual: Any) -> bool:
     got_num = to_float(got_raw)
     if want_num is not None and got_num is not None:
         return math.isclose(want_num, got_num, rel_tol=1e-9, abs_tol=1e-9)
+
+    want_quarter = normalize_quarter(want_raw)
+    got_quarter = normalize_quarter(got_raw)
+    if want_quarter is not None and got_quarter is not None:
+        return want_quarter == got_quarter
+
     return normalize_text(want_raw) == normalize_text(got_raw)
 
 
