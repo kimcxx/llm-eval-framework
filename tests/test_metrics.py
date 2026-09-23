@@ -351,6 +351,22 @@ class TestSchemaMatch:
         case = make_case(expected={"count": 123}, required_keys=["count"], metrics=["schema_match"])
         assert self.metric.compute(case, make_response('{"count": "123"}')).passed is True
 
+    def test_expected_list_matches_any_equivalent(self, make_case, make_response) -> None:
+        """expected 写成列表 = 等价答案，任一命中即匹配。
+
+        典型场景：原文说「取得硕士学位」，期望值却写「硕士」——模型输出哪种
+        粒度都算对。不这么写，同一条用例会因为字面粒度差异被判失败，还会表现成
+        「模型抖动」。
+        """
+        case = make_case(
+            expected={"degree": ["硕士", "硕士学位"]},
+            required_keys=["degree"],
+            metrics=["schema_match"],
+        )
+        assert self.metric.compute(case, make_response('{"degree": "硕士"}')).passed is True
+        assert self.metric.compute(case, make_response('{"degree": "硕士学位"}')).passed is True
+        assert self.metric.compute(case, make_response('{"degree": "博士"}')).passed is False
+
     def test_unparsable_output_scores_zero(self, make_case, make_response) -> None:
         case = make_case(expected={"a": 1}, required_keys=["a"], metrics=["schema_match"])
         result = self.metric.compute(case, make_response("抱歉，我无法输出 JSON"))
