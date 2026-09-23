@@ -5,22 +5,30 @@
 | 生成时间 | {{ generated_at }} |
 | 评测开始 | {{ report.started_at }} |
 | 评测结束 | {{ report.finished_at }} |
-| 总耗时 | {{ report.duration_s | ms }} ms |
+| 总耗时 | {{ '%.1f' | format(report.duration_s) }} s |
 | 被测模型 | {{ report.models | join(", ") }} |
 | 数据集 | {{ report.datasets | join(", ") }} |
-| 调用总次数 | {{ report.case_count }} |
+| 用例记录数 | {{ report.case_count }} |
+{% if repeated %}
+| 每条用例重复次数 | {{ repeat }} |
+| 实际模型调用次数 | {{ total_calls }} |
+| 全局稳定率 | {{ stability | pct }} |
+{% endif %}
 | 参与判定指标 | {{ metric_names | join(", ") }} |
 
 ## 一、总体结果
 
-| 模型 | 用例数 | 通过 | 失败 | 跳过 | 调用异常 | **通过率** | 语义相似度 | 裁判均分 | 平均延迟(ms) | P95延迟(ms) | Tokens | 成本 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 模型 | 用例数 | 通过 | 失败 | 跳过 | 调用异常 | **通过率** |{% if repeated %} **稳定率** | 波动用例 |{% endif %} 语义相似度 | 裁判均分 | 平均延迟(ms) | P95延迟(ms) | Tokens | 成本 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |{% if repeated %} ---: | ---: |{% endif %} ---: | ---: | ---: | ---: | ---: | ---: |
 {% for row in summary_rows %}
-| `{{ row.model }}` | {{ row.total }} | {{ row.passed }} | {{ row.failed }} | {{ row.skipped }} | {{ row.errors }} | **{{ row.pass_rate | pct }}** | {% if row.avg_similarity is not none %}{{ row.avg_similarity | num }}{% else %}-{% endif %} | {% if row.avg_judge is not none %}{{ row.avg_judge | num }}{% else %}-{% endif %} | {{ row.avg_latency_ms | ms }} | {{ row.p95_latency_ms | ms }} | {{ row.total_tokens }} | {{ row.cost | money }} |
+| `{{ row.model }}` | {{ row.total }} | {{ row.passed }} | {{ row.failed }} | {{ row.skipped }} | {{ row.errors }} | **{{ row.pass_rate | pct }}** |{% if repeated %} **{{ row.stability | pct }}** | {{ row.flaky }} |{% endif %} {% if row.avg_similarity is not none %}{{ row.avg_similarity | num }}{% else %}-{% endif %} | {% if row.avg_judge is not none %}{{ row.avg_judge | num }}{% else %}-{% endif %} | {{ row.avg_latency_ms | ms }} | {{ row.p95_latency_ms | ms }} | {{ row.total_tokens }} | {{ row.cost | money }} |
 {% endfor %}
 
 > 通过率 = 通过 / (通过 + 失败)。**「跳过」不计入分母** —— 裁判不可用、参考文本缺失属于评测侧问题，不应算作模型失败。
 > 「调用异常」已计入失败，单独列出用于区分「模型答错」与「接口调用失败」。
+{% if repeated %}
+> **稳定率** = 逐次通过次数 / 总调用次数（每条用例跑 {{ repeat }} 次）；**通过判定要求 {{ repeat }} 次全部通过**，因此重复跑时通过率会低于稳定率，「波动用例」= 通过次数在 1 ~ {{ repeat - 1 }} 之间的用例数。
+{% endif %}
 
 ## 二、分类结果
 
@@ -56,7 +64,7 @@
 {% set rows = failure_rows[model] %}
 {% if rows %}
 {% for row in rows %}
-- **`{{ row.case_id }}`**（{{ row.category }}）
+- **`{{ row.case_id }}`**（{{ row.category }}）{% if repeated %}—— 通过 {{ row.pass_count }}/{{ row.repeat }}{% endif %}
   - 期望：`{{ row.expected | pretty }}`
   - 实际：`{{ row.response | flat }}`
 {% if row.error %}
@@ -71,7 +79,23 @@
 {% endif %}
 
 {% endfor %}
-## 五、运行备注
+{% if repeated %}
+## 五、用例稳定性明细
+
+每条用例独立执行 {{ repeat }} 次，下表列出每条用例的通过次数与逐次判定序列（✅ 通过 / ❌ 失败 / ⚠️ 未判定）。
+
+{% for model in report.models %}
+### 模型 `{{ model }}`
+
+| 用例 | 类别 | 通过次数 | 逐次结果 | 波动 |
+| --- | --- | ---: | --- | --- |
+{% for row in stability_rows[model] %}
+| `{{ row.case_id }}` | {{ row.category }} | **{{ row.pass_count }}/{{ row.repeat }}** | {{ row.marks }} | {% if row.flaky %}是{% else %}-{% endif %} |
+{% endfor %}
+
+{% endfor %}
+{% endif %}
+## {% if repeated %}六{% else %}五{% endif %}、运行备注
 
 {% for note in report.notes %}
 - {{ note }}

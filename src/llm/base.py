@@ -37,12 +37,16 @@ class LLMError(RuntimeError):
 
 
 class BaseLLM(ABC):
-    """模型客户端基类。子类只需实现 `_invoke`。"""
+    """模型客户端基类。子类只需实现 `_invoke`。
+
+    `limiter` 由工厂注入：节流放在这一层，被测模型调用与裁判调用才会走同一套限速。
+    """
 
     def __init__(self, name: str, model: str, **options: Any) -> None:
         self.name = name
         self.model = model
         self.options = options
+        self.limiter: Any | None = None
 
     @abstractmethod
     def _invoke(
@@ -61,9 +65,12 @@ class BaseLLM(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse:
-        """对外统一入口，负责计时。"""
+        """对外统一入口，负责计时与节流。"""
         temp = self.options.get("temperature", 0.0) if temperature is None else temperature
         limit = self.options.get("max_tokens", 1024) if max_tokens is None else max_tokens
+
+        if self.limiter is not None:
+            self.limiter.acquire()
 
         started = time.perf_counter()
         response = self._invoke(system, prompt, float(temp), int(limit))

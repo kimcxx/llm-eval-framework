@@ -43,6 +43,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="只评测指定类别（逗号分隔，如 --categories qa_zh,math；类别名大小写不敏感）",
     )
     parser.add_argument("--workers", type=int, default=None, help="并发线程数")
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=None,
+        help="每条用例独立执行多少次（默认取配置的 run.repeat，通常 1）；>1 时统计稳定率",
+    )
+    parser.add_argument(
+        "--request-interval",
+        type=float,
+        default=None,
+        help="相邻两次模型调用的最小间隔秒数（默认取配置的 run.request_interval_s，0=不限流）",
+    )
     parser.add_argument("--limit", type=int, default=None, help="每个数据集最多取多少条用例")
     parser.add_argument("--tag", default=None, help="报告文件名前缀，便于版本间对比")
     parser.add_argument(
@@ -90,15 +102,32 @@ def drop_judge_from_eval(
 
 
 def print_console_summary(report) -> None:
-    print("\n" + "=" * 74)
-    print(f"{'模型':<20}{'用例':>6}{'通过':>6}{'失败':>6}{'跳过':>6}{'通过率':>10}{'P95(ms)':>10}")
-    print("-" * 74)
+    repeated = getattr(report, "repeat", 1) > 1
+    width = 84 if repeated else 74
+
+    print("\n" + "=" * width)
+    header = f"{'模型':<20}{'用例':>6}{'通过':>6}{'失败':>6}{'跳过':>6}{'通过率':>10}"
+    if repeated:
+        header += f"{'稳定率':>10}"
+    header += f"{'P95(ms)':>10}"
+    print(header)
+    print("-" * width)
     for stats in report.overall():
-        print(
+        line = (
             f"{stats.key:<20}{stats.total:>6}{stats.passed:>6}{stats.failed:>6}"
-            f"{stats.skipped:>6}{stats.pass_rate:>9.1%}{stats.p95_latency_ms:>10.0f}"
+            f"{stats.skipped:>6}{stats.pass_rate:>9.1%}"
         )
-    print("=" * 74)
+        if repeated:
+            line += f"{stats.stability:>9.1%}"
+        line += f"{stats.p95_latency_ms:>10.0f}"
+        print(line)
+    print("=" * width)
+
+    if repeated:
+        print(
+            f"稳定率 = 逐次通过次数 / 总调用次数（全局 {report.stability:.1%}）；"
+            f"通过判定要求 {report.repeat} 次全部通过，波动用例 {report.flaky_count} 条"
+        )
 
     skipped = report.skipped_metric_counts()
     if skipped:
@@ -108,6 +137,12 @@ def print_console_summary(report) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = load_config(args.config)
+
+    # CLI 覆盖配置：命令行是最贴近当次运行的意图，优先级高于 YAML
+    if args.repeat is not None:
+        config.run.repeat = args.repeat
+    if args.request_interval is not None:
+        config.run.request_interval_s = args.request_interval
 
     clients = build_clients(config, args.models, strict=args.strict)
     model_configs = {cfg.name: cfg for cfg in config.models}
