@@ -85,7 +85,8 @@ class TestSingleModelNotRegressed:
         assert items[0]["model"] == "solo"
         assert items[0]["models"] == ["solo"]
         assert items[0]["model_rows"] == [
-            {"model": "solo", "total": 2, "passed": 1, "failed": 1, "pass_rate": 0.5, "p95": 10.0}
+            {"model": "solo", "total": 2, "passed": 1, "failed": 1,
+             "pass_rate": 0.5, "stability": None, "p95": 10.0}
         ]
 
     def test_missing_summary_falls_back(self, tmp_path, monkeypatch) -> None:
@@ -95,5 +96,6 @@ class TestSingleModelNotRegressed:
         items = app._load_reports()
         assert len(items) == 1
         assert items[0]["model_rows"] == [
-            {"model": "?", "total": 0, "passed": 0, "failed": 0, "pass_rate": 0.0, "p95": None}
+            {"model": "?", "total": 0, "passed": 0, "failed": 0,
+             "pass_rate": 0.0, "stability": None, "p95": None}
         ]

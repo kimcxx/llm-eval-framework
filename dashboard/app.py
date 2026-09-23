@@ -11,7 +11,7 @@ import json
 import os
 import re
 import sys
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -436,6 +436,15 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .badge.pass { background: rgba(52,201,142,.18); color: var(--ok); }
   .badge.fail { background: rgba(240,86,106,.18); color: var(--bad); }
   .badge.skip { background: rgba(245,180,73,.18); color: var(--warn); }
+  /* repeat>1 报告：抖动用例标记 / 重复执行并排卡片 */
+  .badge.warn { background: rgba(245,180,73,.18); color: var(--warn); }
+  /* 报告类型标签：回归测试（单次）与稳定性测试（repeat>1）用不同颜色，避免视觉混淆 */
+  .badge.rtype-reg { background: rgba(79,142,247,.18); color: var(--accent); }
+  .badge.rtype-stab { background: rgba(163,113,247,.18); color: #a371f7; }
+  .attempts { display: flex; gap: 10px; flex-wrap: wrap; }
+  .attempt { flex: 1 1 220px; min-width: 200px; background: var(--panel2);
+             border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .attempt-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
   .stat { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
   .stat .k { color: var(--muted); font-size: 12px; }
@@ -543,6 +552,35 @@ const metricLabel = m => METRIC_LABELS[m] || m;
 const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(--bad)';
 const rateInner = x => `<div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div>`;
 const rateCell = x => `<td>${rateInner(x)}</td>`;
+
+// ---------- repeat（重复执行）相关：老报告没有这些字段，一律降级为 '—' ----------
+// 用例重复次数：优先用 repeat 字段，缺失时从 attempts 长度推断，都没有则 0（= 单次评测）
+const repeatOf = c => Number((c && c.repeat) || 0)
+  || ((c && Array.isArray(c.attempts) && c.attempts.length) || 0);
+// 稳定率单元格：null/undefined（老报告）显示 '—'
+const stabCell = v => `<td>${(v == null) ? '<span class="catname">—</span>' : rateInner(v)}</td>`;
+// 报告类型：repeat>1 = 稳定性测试（同一条用例跑多次，看稳定率）；否则回归测试
+const isStability = r => Number((r && r.repeat) || 1) > 1;
+const typeBadge = r => isStability(r)
+  ? `<span class="badge rtype-stab" title="每条用例重复跑 ${r.repeat} 次，看稳定率">稳定性测试</span>`
+  : `<span class="badge rtype-reg" title="每条用例跑 1 次">回归测试</span>`;
+// 列表「用例」列：稳定性报告显示「30 × 3次」（单模型用例数 × 重复次数）
+const caseCountText = r => {
+  const n = Number((r && r.repeat) || 1);
+  const models = (r && r.model_rows && r.model_rows.length) || 1;
+  if (n > 1) return `${Math.round((r.case_count || 0) / models)} × ${n}次`;
+  return `${r.case_count || 0}`;
+};
+// 列表「通过率 / 稳定率」列：稳定性报告取 stability（严格通过率放详情页），
+// 老报告没有 stability 时退回 pass_rate，不出现空白
+const listRate = (r, x) => (isStability(r) && x && x.stability != null) ? x.stability : (x ? x.pass_rate : 0);
+// 「2/3」+ 抖动标记
+const repeatCell = c => {
+  const n = repeatOf(c);
+  if (!n || n <= 1 || c.pass_count == null) return '<td><span class="catname">—</span></td>';
+  const mark = c.flaky ? ' <span class="badge warn" title="同一用例重复跑结果不一致">不稳定</span>' : '';
+  return `<td><span class="badge">${c.pass_count}/${n}</span>${mark}</td>`;
+};
 // 横向报告一份文件含多个模型，列表里必须按模型逐行展示（只显示第一个会让人以为整份报告是 mock）
 const isMultiModel = r => !!(r.model_rows && r.model_rows.length > 1);
 const multiCell = (r, fn) => r.model_rows.map(fn).join('');
@@ -707,6 +745,14 @@ async function renderList(reports) {
   const tests = await (await fetch('api/tests.json')).json();
   const hasTests = tests && tests.total;
   const ciAllPass = hasTests && tests.failed === 0 && tests.errors === 0;
+  // 列表里只要有一份稳定性报告，通过率列就要改成「稳定率 / 通过率」双含义表头
+  const hasStability = (reports || []).some(isStability);
+  // 顶部「最新通过率」卡片同样跟随：最新报告是稳定性测试时显示稳定率，
+  // 否则列表与卡片两个数打架（一个 75.6% 一个 60.0%）反而看不懂
+  const topRate = reports[0] ? listRate(reports[0], reports[0]) : 0;
+  const topRates = (reports[0] && isMultiModel(reports[0]))
+    ? reports[0].model_rows.map(x => listRate(reports[0], x))
+    : [topRate];
   // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
   const bannerData = await computeBannerData(reports);
   $app.innerHTML = `
@@ -716,7 +762,7 @@ async function renderList(reports) {
     <div class="grid" style="margin-bottom:16px">
       <div class="stat"><div class="k">报告数</div><div class="v">${reports.length}</div></div>
       <div class="stat"><div class="k">单次最多用例</div><div class="v">${Math.max(...reports.map(r=>r.case_count))}</div></div>
-      <div class="stat"><div class="k">最新通过率</div><div class="v" style="color:${rateColor(reports[0].pass_rate)}">${isMultiModel(reports[0]) ? `${pct(Math.min(...reports[0].model_rows.map(x=>x.pass_rate)))} ~ ${pct(Math.max(...reports[0].model_rows.map(x=>x.pass_rate)))}` : pct(reports[0].pass_rate)}</div></div>
+      <div class="stat"><div class="k">最新${isStability(reports[0]) ? '稳定率' : '通过率'}</div><div class="v" style="color:${rateColor(topRate)}">${topRates.length > 1 ? `${pct(Math.min(...topRates))} ~ ${pct(Math.max(...topRates))}` : pct(topRate)}</div></div>
       <div class="stat"><div class="k">最新模型</div><div class="v" style="font-size:14px">${esc(isMultiModel(reports[0]) ? reports[0].models.join(' / ') : reports[0].model)}</div></div>
     </div>
     ${hasTests ? `
@@ -744,21 +790,21 @@ async function renderList(reports) {
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
     <div class="card"><table>
-      <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>通过率</th><th>P95 延迟</th></tr>
+      <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>${hasStability ? '稳定率 / 通过率' : '通过率'}</th><th>P95 延迟</th></tr>
       ${reports.map((r, i) => {
         const multi = isMultiModel(r);
         const modelCell = multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model);
-        const totalCell = multi ? multiCell(r, x => `<div>${x.total}</div>`) : `${r.case_count}`;
+        const totalCell = caseCountText(r);
         const pfCell = multi ? multiCell(r, x => `<div>${x.passed} / ${x.failed}</div>`) : `${r.passed} / ${r.failed}`;
         const rateCellHtml = multi
-          ? `<td>${multiCell(r, x => rateInner(x.pass_rate))}</td>`
-          : rateCell(r.pass_rate);
+          ? `<td>${multiCell(r, x => rateInner(listRate(r, x)))}</td>`
+          : rateCell(listRate(r, r));
         const p95Cell = multi
           ? multiCell(r, x => `<div>${x.p95 != null ? x.p95.toFixed(2) + ' ms' : '—'}</div>`)
           : (r.p95 != null ? r.p95.toFixed(2) + ' ms' : '—');
         return `
         <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
-          <td>#${reports.length - i} <span class="badge">${r.tag || 'run'}</span>${multi ? ` <span class="badge">${r.model_rows.length} 模型</span>` : ''}</td>
+          <td>#${reports.length - i} ${typeBadge(r)} <span class="badge">${r.tag || 'run'}</span>${multi ? ` <span class="badge">${r.model_rows.length} 模型</span>` : ''}</td>
           <td class="catname">${esc(r.time)}</td>
           <td>${modelCell}</td>
           <td>${totalCell}</td>
@@ -767,7 +813,9 @@ async function renderList(reports) {
           <td>${p95Cell}</td>
         </tr>`;
       }).join('')}
-    </table></div>`;
+    </table>
+    ${hasStability ? `<div class="hint" style="padding:10px 12px 0">「稳定性测试」= 每条用例重复跑 N 次，用例列显示「单模型用例数 × 重复次数」，通过率列显示<b>稳定率</b>（要求 N 次全过的严格通过率见报告详情）；「回归测试」= 每条用例跑 1 次。</div>` : ''}
+    </div>`;
 }
 
 // 渲染详情页框架（标题 + tabs + 当前 tab 内容）
@@ -794,15 +842,25 @@ async function renderDetail(file, tab) {
 // 注：r.dimensions 为 {model: [{dimension,label,total,passed,failed,skipped,pass_rate}]}；
 // 老报告没有该字段，返回空串不渲染。
 // 结论卡片：一句话写明排名 / 裁判 / 异常，由后端 compute_conclusion 算好塞进 _conclusion
-function conclusionCard(c) {
+function conclusionCard(c, r) {
   if (!c || !c.text) return '';
   return `
     <div class="card conclusion">
       <div style="font-weight:600;margin-bottom:6px">本报告结论</div>
       <div style="font-size:14px;line-height:1.7">${esc(c.text)}</div>
+      ${flakyNote(r)}
       ${(c.anomalies || []).length ? `
         <ul class="anomaly-list">${c.anomalies.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
     </div>`;
+}
+
+// 有抖动用例时补一句：repeat>1 的场景下单次通过率会被随机性带偏，应看稳定率
+function flakyNote(r) {
+  const rows = (r && Array.isArray(r.summary)) ? r.summary : [];
+  const hits = rows.filter(s => Number((s && s.flaky) || 0) > 0);
+  if (!hits.length) return '';
+  const text = hits.map(s => `${s.model} 有 ${s.flaky} 条用例结果不稳定`).join('；');
+  return `<div class="hint" style="margin-top:6px">⚠️ ${esc(text)}，看稳定率而非单次通过率。</div>`;
 }
 
 // 维度（主行）→ 分类（子行）两层分组：维度是能力面，分类是具体任务类型。
@@ -880,17 +938,19 @@ function renderSummaryTab(r) {
   const s = r.summary || [];
   const groups = buildDimCatGroups(r.cases || []);
   document.getElementById('tabBody').innerHTML = `
-    ${conclusionCard(r._conclusion)}
+    ${conclusionCard(r._conclusion, r)}
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">模型总览</div>
-      <div class="hint">各模型整体表现对比。</div>
+      <div class="hint">各模型整体表现对比。稳定率 = 全部调用中通过的比例；抖动用例 = 同一用例重复跑结果不一致的条数（仅 repeat&gt;1 的评测有数据，老报告显示 —）。</div>
       <table>
-        <tr><th>模型</th><th>通过 / 总数</th><th>通过率</th><th>avg 延迟</th><th>P95</th><th>tokens</th><th>成本</th></tr>
+        <tr><th>模型</th><th>通过 / 总数</th><th>通过率</th><th>稳定率</th><th>抖动用例</th><th>avg 延迟</th><th>P95</th><th>tokens</th><th>成本</th></tr>
         ${s.map(m => `
           <tr>
             <td>${esc(m.model)}</td>
             <td>${m.passed} / ${m.total}</td>
             ${rateCell(m.pass_rate)}
+            ${stabCell(m.stability)}
+            <td>${(m.flaky == null) ? '<span class="catname">—</span>' : m.flaky}</td>
             <td>${(m.avg_latency_ms ?? 0).toFixed(2)} ms</td>
             <td>${(m.p95_latency_ms ?? 0).toFixed(2)} ms</td>
             <td>${m.total_tokens ?? '—'}</td>
@@ -966,7 +1026,7 @@ function renderCasesTab(r, file) {
       </div>
       <div class="card" style="padding:0;overflow:auto">
         <table>
-          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:80px">延迟</th></tr>
+          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:96px">通过次数</th><th style="width:80px">延迟</th></tr>
           ${filtered.map(c => {
             const st = statusOf(c);
             const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
@@ -979,6 +1039,7 @@ function renderCasesTab(r, file) {
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.prompt, 80))}</td>
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.response, 80))}${st==='fail' && failMetric ? `<div class="err" style="font-size:12px;margin-top:3px">${esc(prev(failMetric.detail || failMetric.name, 60))}</div>` : ''}</td>
               <td><span class="badge">${esc(c.category || '（无）')}</span></td>
+              ${repeatCell(c)}
               <td>${lat}</td>
             </tr>`;
           }).join('')}
@@ -1071,6 +1132,36 @@ async function renderDiffTab(r, file) {
 }
 
 // 抽屉：显示用例完整详情
+// 重复执行明细：每次尝试并排展示通过/失败 + 耗时（老报告无 attempts，整块不渲染）
+function attemptsSection(c) {
+  const attempts = (c && Array.isArray(c.attempts)) ? c.attempts : [];
+  if (!attempts.length) return '';
+  const total = attempts.length;
+  const passed = (c.pass_count != null) ? c.pass_count : attempts.filter(a => a.passed === true).length;
+  const cards = attempts.map(a => {
+    const cls = a.passed === true ? 'pass' : (a.passed === false ? 'fail' : 'skip');
+    const label = a.passed === true ? '通过' : (a.passed === false ? '失败' : '未判定');
+    const lat = (a.latency_ms != null) ? a.latency_ms.toFixed(2) + ' ms' : '—';
+    const bad = (a.metrics || []).find(m => m.passed === false);
+    return `
+      <div class="attempt">
+        <div class="attempt-head">
+          <span class="badge">第 ${Number(a.index ?? 0) + 1} 次</span>
+          <span class="badge ${cls}">${label}</span>
+          <span class="catname">${lat}</span>
+        </div>
+        <div class="scroll-box mono">${esc(a.response || '')}</div>
+        ${a.error ? `<div class="err" style="font-size:12px;margin-top:4px">${esc(a.error)}</div>` : ''}
+        ${bad ? `<div class="err" style="font-size:12px;margin-top:4px">${esc(bad.detail || bad.name)}</div>` : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div class="drawer-section">
+      <h3>重复执行（${total} 次，通过 ${passed} 次）${c.flaky ? ' <span class="badge warn">不稳定</span>' : ''}</h3>
+      <div class="attempts">${cards}</div>
+    </div>`;
+}
+
 function openDrawer(c) {
   if (!c) return;
   const st = statusOf(c);
@@ -1096,6 +1187,7 @@ function openDrawer(c) {
       <h3>response</h3>
       <div class="scroll-box mono">${esc(c.response || '')}</div>
     </div>
+    ${attemptsSection(c)}
     ${c.error ? `
     <div class="drawer-section">
       <h3>error</h3>
@@ -1336,6 +1428,7 @@ def _load_reports():
                 "passed": s.get("passed", 0),
                 "failed": s.get("failed", 0),
                 "pass_rate": s.get("pass_rate", 0.0),
+                "stability": s.get("stability"),
                 "p95": s.get("p95_latency_ms"),
             }
             for s in (data.get("summary") or [])
@@ -1346,8 +1439,11 @@ def _load_reports():
             "passed": summary.get("passed", 0),
             "failed": summary.get("failed", 0),
             "pass_rate": summary.get("pass_rate", 0.0),
+            "stability": summary.get("stability"),
             "p95": summary.get("p95_latency_ms"),
         }]
+        # repeat：老报告（无该字段）按 1 处理 = 单次回归测试
+        repeat = int(data.get("repeat", 1) or 1)
         items.append({
             "file": p.name,
             "time": (m.group(0) if m else data.get("started_at", "?")),
@@ -1356,9 +1452,11 @@ def _load_reports():
             "models": [row["model"] for row in model_rows],
             "model_rows": model_rows,
             "case_count": data.get("case_count", 0),
+            "repeat": repeat,
             "passed": summary.get("passed", 0),
             "failed": summary.get("failed", 0),
             "pass_rate": summary.get("pass_rate", 0.0),
+            "stability": data.get("stability"),
             "p95": summary.get("p95_latency_ms"),
         })
     items.sort(key=lambda x: _time_key(x["time"]), reverse=True)
@@ -1465,7 +1563,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main():
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    # 必须是多线程：首页会并发请求 reports.json / tests.json / 多份 report.json，
+    # 单线程 HTTPServer 遇到 keep-alive 连接会串行排队，第二次打开页面就容易卡死。
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"评测报告看板已启动: http://0.0.0.0:{PORT}  (数据源: {REPORTS_DIR})")
     server.serve_forever()
 
