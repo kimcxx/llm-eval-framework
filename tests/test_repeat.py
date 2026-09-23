@@ -14,9 +14,9 @@ import time
 import pytest
 
 from conftest import FakeLLM
-from src.config import ConfigError, ModelConfig, RunSettings
+from src.config import AppConfig, ConfigError, ModelConfig, PathSettings, RunSettings
 from src.datasets.schema import EvalCase
-from src.llm.registry import build_client
+from src.llm.registry import build_client, build_clients
 from src.llm.rate_limit import RateLimiter
 from src.metrics.registry import MetricFactory
 from src.report.markdown import render_markdown, write_reports
@@ -311,3 +311,116 @@ class TestRepeatInReports:
 
         assert "repeat" in header
         assert "pass_count" in header
+
+
+# ============================== 稳定率的分层聚合 ============================== #
+
+
+class TestStabilityAggregation:
+    """稳定率要在模型 / 分类层级都算得出来，否则报告里会出现空白列。"""
+
+    @staticmethod
+    def _mixed_report():
+        cases = [
+            case("c1"),
+            EvalCase.from_dict({
+                "id": "c2", "category": "other", "prompt": "2+2",
+                "expected": "4", "metrics": ["exact_match"],
+            }),
+        ]
+        return build_runner(
+            {"mixed": SequenceLLM({"1+1": ["2", "2", "5"], "2+2": ["4", "4", "4"]}, name="mixed")},
+            run=RunSettings(workers=1, max_retries=1, repeat=3),
+        ).run_cases(cases)
+
+    def test_group_stats_counts_attempts_not_cases(self) -> None:
+        """分母是调用次数而不是用例数，否则 repeat 越大稳定率越虚高。"""
+        stats = self._mixed_report().overall()[0]
+
+        assert stats.total == 2           # 用例数不受 repeat 影响
+        assert stats.attempts_total == 6  # 2 条 × 3 次
+        assert stats.attempts_passed == 5
+        assert stats.stability == pytest.approx(5 / 6)
+        assert stats.flaky == 1
+        # 2/3 通过的那条按失败计
+        assert stats.passed == 1
+        assert stats.failed == 1
+
+    def test_category_groups_expose_stability(self) -> None:
+        groups = {g.key: g for g in self._mixed_report().by_category("mixed")}
+
+        assert set(groups) == {"other", "unit"}
+        assert groups["unit"].stability == pytest.approx(2 / 3)
+        assert groups["unit"].flaky == 1
+        assert groups["other"].stability == 1.0
+        assert groups["other"].flaky == 0
+
+    def test_results_keep_deterministic_order_under_concurrency(self) -> None:
+        """并发下合并 N 次结果后仍按「模型 × 用例」排序，报告才可复现。"""
+        clients = {
+            "a": FakeLLM(mapping={"1+1": "2", "2+2": "4"}, name="a"),
+            "b": FakeLLM(mapping={"1+1": "2", "2+2": "4"}, name="b"),
+        }
+        report = build_runner(
+            clients, run=RunSettings(workers=4, max_retries=1, repeat=3)
+        ).run_cases([case("c1"), case("c2", "2+2", "4")])
+
+        assert [(c.model, c.case_id) for c in report.cases] == [
+            ("a", "c1"), ("a", "c2"), ("b", "c1"), ("b", "c2"),
+        ]
+
+
+# ============================== 限流接线 ============================== #
+
+
+class TestLimiterWiring:
+    def test_built_clients_share_one_limiter(self) -> None:
+        """多模型共用一个限流器：否则模型一多，对供应商的总 QPS 就翻倍了。"""
+        config = AppConfig(
+            models=[ModelConfig(name="m1", provider="mock"), ModelConfig(name="m2", provider="mock")],
+            judge_model=None,
+            run=RunSettings(request_interval_s=0.2),
+            paths=PathSettings(),
+        )
+        clients = build_clients(config)
+
+        assert len(clients) == 2
+        assert len({id(c.limiter) for c in clients.values()}) == 1
+        assert next(iter(clients.values())).limiter.min_interval_s == 0.2
+
+    def test_explicit_limiter_is_reused(self) -> None:
+        limiter = RateLimiter(0.1)
+        client = build_client(ModelConfig(name="m", provider="mock"), RunSettings(), limiter=limiter)
+        assert client.limiter is limiter
+
+
+# ============================== 单次评测不被打扰 ============================== #
+
+
+class TestSingleRunStaysClean:
+    """repeat=1 的产物必须和改动前一致，老流水线不能被新字段污染。"""
+
+    @pytest.fixture()
+    def report(self):
+        return build_runner({"fake": FakeLLM(mapping={"1+1": "2"})}).run_cases([case()])
+
+    def test_markdown_has_no_stability_section(self, report) -> None:
+        markdown = render_markdown(report)
+
+        assert "用例稳定性明细" not in markdown
+        assert "全局稳定率" not in markdown
+
+    def test_csv_repeat_columns_are_filled(self, report, tmp_path) -> None:
+        paths = write_reports(report, tmp_path, tag="one", verbose=False)
+        lines = paths["csv"].read_text(encoding="utf-8-sig").splitlines()
+        header = lines[0].split(",")
+        row = lines[1].split(",")
+
+        assert row[header.index("repeat")] == "1"
+        assert row[header.index("pass_count")] == "1"
+
+    def test_yaml_string_values_are_coerced(self) -> None:
+        """YAML 里写成字符串（repeat: "3"）也要能跑，而不是静默变成比较字符串。"""
+        settings = RunSettings.from_dict({"repeat": "3", "request_interval_s": "0.5"})
+        assert settings.repeat == 3
+        assert settings.request_interval_s == 0.5
