@@ -19,8 +19,58 @@ from src.metrics.base import MetricResult
 
 
 @dataclass
+class AttemptResult:
+    """同一条用例的一次独立执行（repeat=N 时会产生 N 条）。
+
+    单独建模而不是塞进 CaseResult 的列表字典，是为了让「每次都落盘」有明确的schema：
+    每次调用的原文、指标、耗时、失败原因都能被逐条追溯。
+    """
+
+    index: int = 0
+    response_text: str = ""
+    latency_ms: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost: float = 0.0
+    metrics: list[MetricResult] = field(default_factory=list)
+    error: str | None = None
+
+    @property
+    def judged(self) -> list[MetricResult]:
+        return [m for m in self.metrics if m.passed is not None]
+
+    @property
+    def passed(self) -> bool | None:
+        """None = 该次没有可判定指标（如裁判不可用），不计入稳定率分子分母。"""
+        if self.error:
+            return False
+        judged = self.judged
+        if not judged:
+            return None
+        return all(m.passed for m in judged)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "index": self.index,
+            "passed": self.passed,
+            "error": self.error,
+            "response": self.response_text,
+            "latency_ms": round(self.latency_ms, 2),
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "cost": round(self.cost, 6),
+            "metrics": [m.to_dict() for m in self.metrics],
+        }
+
+
+@dataclass
 class CaseResult:
-    """单条用例在单个模型上的一次完整评测记录。"""
+    """单条用例在单个模型上的评测记录。
+
+    repeat=1 时 attempts 只有一条，行为与旧版完全一致；
+    repeat>1 时 attempts 保存 N 次独立执行，顶层字段是「聚合视图」：
+    response_text / metrics 取第一次（代表样本），tokens 与 cost 取 N 次之和。
+    """
 
     case_id: str
     category: str
@@ -37,21 +87,68 @@ class CaseResult:
     metrics: list[MetricResult] = field(default_factory=list)
     skipped_metrics: list[str] = field(default_factory=list)
     error: str | None = None
+    repeat: int = 1
+    attempts: list[AttemptResult] = field(default_factory=list)
 
     @property
     def judged(self) -> list[MetricResult]:
         """参与通过判定的指标（passed 不为 None）。"""
         return [m for m in self.metrics if m.passed is not None]
 
-    @property
-    def passed(self) -> bool | None:
-        """None 表示该用例无可判定指标，不计入通过率分母。"""
+    def _single_passed(self) -> bool | None:
+        """没有 attempts（例如手工构造结果）时的判定，沿用单次口径。"""
         if self.error:
             return False
         judged = self.judged
         if not judged:
             return None
         return all(m.passed for m in judged)
+
+    @property
+    def attempt_total(self) -> int:
+        return len(self.attempts) if self.attempts else max(1, self.repeat)
+
+    @property
+    def pass_count(self) -> int:
+        """N 次里通过的次数；无 attempts 时退化为「单次是否通过」的 0/1。"""
+        if not self.attempts:
+            return 1 if self._single_passed() is True else 0
+        return sum(1 for a in self.attempts if a.passed is True)
+
+    @property
+    def judged_attempts(self) -> list[AttemptResult]:
+        return [a for a in self.attempts if a.passed is not None]
+
+    @property
+    def passed(self) -> bool | None:
+        """用例是否通过：repeat>1 时要求 N 次全部通过（稳定通过）。
+
+        为什么不是「至少一次通过」：重复执行的目的就是看稳定性，
+        一条安全用例 3 次里漏了 1 次就该被标记为有风险，
+        否则 pass@N 会把「偶尔才守得住」粉饰成通过。
+        None 表示该用例无可判定指标，不计入通过率分母。
+        """
+        if not self.attempts:
+            return self._single_passed()
+
+        judged = self.judged_attempts
+        if not judged:
+            return None
+        return len(judged) == len(self.attempts) and all(a.passed for a in judged)
+
+    @property
+    def flaky(self) -> bool:
+        """时好时坏：通过次数介于 1 与 repeat-1 之间。"""
+        count = self.pass_count
+        return 0 < count < self.attempt_total
+
+    @property
+    def case_stability(self) -> float:
+        """本条用例的逐次通过率（pass_count / repeat）。"""
+        total = len(self.attempts)
+        if not total:
+            return 1.0 if self._single_passed() is True else 0.0
+        return self.pass_count / total
 
     def score_of(self, name: str) -> float | None:
         for metric in self.metrics:
@@ -77,6 +174,10 @@ class CaseResult:
             "cost": round(self.cost, 6),
             "metrics": [m.to_dict() for m in self.metrics],
             "skipped_metrics": self.skipped_metrics,
+            "repeat": self.attempt_total,
+            "pass_count": self.pass_count,
+            "flaky": self.flaky,
+            "attempts": [a.to_dict() for a in self.attempts],
         }
 
 
@@ -90,6 +191,10 @@ class GroupStats:
     failed: int = 0
     skipped: int = 0
     errors: int = 0
+    # 稳定性统计：逐次口径（分母是调用次数，不是用例数）
+    attempts_total: int = 0
+    attempts_passed: int = 0
+    flaky: int = 0
     latency_ms: list[float] = field(default_factory=list)
     cost: float = 0.0
     prompt_tokens: int = 0
@@ -110,6 +215,12 @@ class GroupStats:
         if case.error:
             self.errors += 1
 
+        if case.passed is not None:
+            self.attempts_total += case.attempt_total
+            self.attempts_passed += case.pass_count
+            if case.flaky:
+                self.flaky += 1
+
         self.latency_ms.append(case.latency_ms)
         self.cost += case.cost
         self.prompt_tokens += case.prompt_tokens
@@ -126,6 +237,13 @@ class GroupStats:
     @property
     def pass_rate(self) -> float:
         return self.passed / self.judged if self.judged else 0.0
+
+    @property
+    def stability(self) -> float:
+        """稳定率 = 逐次通过次数 / 总调用次数（只统计实际参与判定的用例）。"""
+        if not self.attempts_total:
+            return 0.0
+        return self.attempts_passed / self.attempts_total
 
     @property
     def avg_latency_ms(self) -> float:
@@ -206,12 +324,41 @@ class EvalReport:
     cases: list[CaseResult] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     config_path: str = ""
+    repeat: int = 1
 
     # ---------------- 聚合视图 ---------------- #
 
     @property
     def case_count(self) -> int:
         return len(self.cases)
+
+    @property
+    def total_calls(self) -> int:
+        """实际模型调用次数（case × 模型 × repeat）。"""
+        return sum(c.attempt_total for c in self.cases)
+
+    @property
+    def stability(self) -> float:
+        """全局稳定率：所有参与判定用例的平均通过次数 / repeat。"""
+        attempts_total = 0
+        attempts_passed = 0
+        for case in self.cases:
+            if case.passed is None:
+                continue
+            attempts_total += case.attempt_total
+            attempts_passed += case.pass_count
+        if not attempts_total:
+            return 0.0
+        return attempts_passed / attempts_total
+
+    @property
+    def flaky_count(self) -> int:
+        """时好时坏的用例数（0 < 通过次数 < repeat）。"""
+        return sum(1 for c in self.cases if c.flaky)
+
+    def stability_rows(self, model: str) -> list[CaseResult]:
+        """按模型列出用例级稳定性明细（repeat>1 时才有意义）。"""
+        return [c for c in self.cases if c.model == model]
 
     def overall(self) -> list[GroupStats]:
         groups = group_by(self.cases, "model")
@@ -262,6 +409,10 @@ class EvalReport:
             "models": self.models,
             "datasets": self.datasets,
             "case_count": self.case_count,
+            "repeat": self.repeat,
+            "total_calls": self.total_calls,
+            "stability": round(self.stability, 4),
+            "flaky_count": self.flaky_count,
             "notes": self.notes,
             "summary": [
                 {
@@ -272,6 +423,8 @@ class EvalReport:
                     "skipped": s.skipped,
                     "errors": s.errors,
                     "pass_rate": round(s.pass_rate, 4),
+                    "stability": round(s.stability, 4),
+                    "flaky": s.flaky,
                     "avg_latency_ms": round(s.avg_latency_ms, 2),
                     "p95_latency_ms": round(s.p95_latency_ms, 2),
                     "cost": round(s.cost, 6),

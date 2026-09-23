@@ -97,6 +97,12 @@ class ModelConfig:
         return cls(**payload, extra=extra)
 
 
+def _normalize_categories(categories: Any) -> tuple[str, ...]:
+    if isinstance(categories, str):
+        categories = [categories]
+    return tuple(str(item).strip() for item in categories if str(item).strip())
+
+
 @dataclass
 class RunSettings:
     """评测运行参数。"""
@@ -106,6 +112,12 @@ class RunSettings:
     timeout_s: float = 60.0
     similarity_threshold: float = 0.75
     judge_threshold: float = 4.0
+    # 每条用例独立执行多少次。1 = 常规单次评测；> 1 时同一条用例跑 N 次，
+    # 每次结果都落盘，用来观察模型输出的稳定性（而不是只看一次运气）。
+    repeat: int = 1
+    # 相邻两次模型调用之间的最小间隔（秒），全局生效（含裁判调用）。
+    # 0 = 不限流；供应商有 RPM 限制时按 60 / RPM 估算，例如 60 RPM ≈ 1.0s。
+    request_interval_s: float = 0.0
     # schema_match 的通过阈值：score（匹配字段比例）不低于该值才算通过。
     # 默认 1.0 = 所有必需字段都必须正确，与旧 json_valid 的口径一致。
     schema_match_threshold: float = 1.0
@@ -114,16 +126,22 @@ class RunSettings:
     # 背景：开放式问答没有标准答案，字面相似度会把「换个说法但答对了」误判为失败。
     judge_only_categories: tuple[str, ...] = ("qa_open",)
 
+    def __post_init__(self) -> None:
+        self.repeat = int(self.repeat)
+        self.request_interval_s = float(self.request_interval_s)
+        if self.repeat < 1:
+            raise ConfigError(f"run.repeat 必须 >= 1，实际为 {self.repeat}")
+        if self.request_interval_s < 0:
+            raise ConfigError(
+                f"run.request_interval_s 不能为负数，实际为 {self.request_interval_s}"
+            )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any] | None) -> RunSettings:
         raw = dict(raw or {})
         categories = raw.pop("judge_only_categories", None)
-        if categories is None:
-            return cls(**raw)
-        if isinstance(categories, str):
-            categories = [categories]
-        normalized = tuple(str(item).strip() for item in categories if str(item).strip())
-        return cls(**raw, judge_only_categories=normalized)
+        settings = cls(**raw) if categories is None else cls(**raw, judge_only_categories=_normalize_categories(categories))
+        return settings
 
 
 @dataclass

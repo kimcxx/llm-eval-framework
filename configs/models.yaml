@@ -91,6 +91,8 @@ run:
   workers: 4                  # 并发线程数，注意模型侧的限流
   max_retries: 3              # 单次调用失败重试次数
   timeout_s: 60               # 单次调用超时
+  repeat: 1                   # 每条用例独立跑几次（1=常规；>1 时统计稳定率，每次结果都落盘）
+  request_interval_s: 0.0     # 相邻两次调用的最小间隔（秒），0=不限流；按 60/RPM 估算，如 60RPM≈1.0
   similarity_threshold: 0.75  # 语义相似度指标的通过阈值
   judge_threshold: 4.0        # LLM 裁判的通过阈值（1~5 分制）
   schema_match_threshold: 1.0 # schema_match 的通过阈值（匹配字段比例，1.0=字段全对）

@@ -62,6 +62,8 @@ def _summary_rows(report: EvalReport) -> list[dict[str, Any]]:
                 "skipped": stats.skipped,
                 "errors": stats.errors,
                 "pass_rate": stats.pass_rate,
+                "stability": stats.stability,
+                "flaky": stats.flaky,
                 "avg_latency_ms": stats.avg_latency_ms,
                 "p95_latency_ms": stats.p95_latency_ms,
                 "cost": stats.cost,
@@ -119,20 +121,49 @@ def _failure_rows(report: EvalReport, model: str, limit: int = 15) -> list[dict[
                 "error": case.error,
                 "expected": case.expected,
                 "response": case.response_text,
+                "pass_count": case.pass_count,
+                "repeat": case.attempt_total,
                 "reasons": [f"{m.name}: {m.detail}" for m in failed] or ["（无判定指标失败，可能是调用异常）"],
             }
         )
     return rows
 
 
+def _stability_rows(report: EvalReport, model: str) -> list[dict[str, Any]]:
+    """用例级稳定性明细：每条用例 N 次里通过几次、每次的判定序列。"""
+    rows: list[dict[str, Any]] = []
+    for case in report.stability_rows(model):
+        marks = " ".join(
+            "✅" if a.passed else ("⚠️" if a.passed is None else "❌") for a in case.attempts
+        )
+        rows.append(
+            {
+                "case_id": case.case_id,
+                "category": case.category,
+                "pass_count": case.pass_count,
+                "repeat": case.attempt_total,
+                "flaky": case.flaky,
+                "marks": marks,
+            }
+        )
+    return rows
+
+
 def build_context(report: EvalReport) -> dict[str, Any]:
+    repeated = getattr(report, "repeat", 1) > 1
     return {
         "report": report,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "repeated": repeated,
+        "repeat": getattr(report, "repeat", 1),
+        "total_calls": report.total_calls,
+        "stability": report.stability,
+        "flaky_count": report.flaky_count,
         "summary_rows": _summary_rows(report),
         "category_rows": {m: _category_rows(report, m) for m in report.models},
         "dimension_rows": {m: _dimension_rows(report, m) for m in report.models},
         "failure_rows": {m: _failure_rows(report, m) for m in report.models},
+        "stability_rows": {m: _stability_rows(report, m) for m in report.models} if repeated else {},
         "skipped_metrics": report.skipped_metric_counts(),
         "metric_names": report.metric_names(),
     }
@@ -192,6 +223,8 @@ def _write_csv(report: EvalReport, path: Path) -> None:
             "dimension": case.dimension or "untagged",
             "case_id": case.case_id,
             "passed": case.passed,
+            "repeat": case.attempt_total,
+            "pass_count": case.pass_count,
             "error": case.error,
             "latency_ms": round(case.latency_ms, 2),
             "prompt_tokens": case.prompt_tokens,
@@ -213,7 +246,20 @@ def _write_csv_stdlib(report: EvalReport, path: Path) -> None:
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(
-            ["model", "dataset", "category", "dimension", "case_id", "passed", "error", "latency_ms", "cost", "response"]
+            [
+                "model",
+                "dataset",
+                "category",
+                "dimension",
+                "case_id",
+                "passed",
+                "repeat",
+                "pass_count",
+                "error",
+                "latency_ms",
+                "cost",
+                "response",
+            ]
         )
         for case in report.cases:
             writer.writerow(
@@ -224,6 +270,8 @@ def _write_csv_stdlib(report: EvalReport, path: Path) -> None:
                     case.dimension or "untagged",
                     case.case_id,
                     case.passed,
+                    case.attempt_total,
+                    case.pass_count,
                     case.error or "",
                     round(case.latency_ms, 2),
                     round(case.cost, 6),
