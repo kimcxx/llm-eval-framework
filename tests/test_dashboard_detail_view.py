@@ -167,7 +167,7 @@ class TestAttributesPlumbing:
 
     @pytest.mark.parametrize("report", [
         "report-full-regression-20260923-143903.json",
-        "report-dimcheck-20260928-130537.json",
+        "report-json-r3-20260923-142557.json",
     ])
     def test_real_reports_produce_attributes(self, report) -> None:
         import json
