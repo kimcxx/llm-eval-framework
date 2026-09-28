@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-09-23T06:23:20+00:00",
-  "total": 699,
-  "passed": 699,
+  "generated_at": "2026-09-28T08:26:36+00:00",
+  "total": 770,
+  "passed": 770,
   "failed": 0,
   "skipped": 0,
   "errors": 0,
-  "duration_s": 3.79,
+  "duration_s": 4.12,
   "failed_tests": [],
   "branch": "main",
-  "commit": "aa4500747e20ac33c3d14552247359b9e0a5a2d5",
-  "run_id": "35826493244",
-  "run_url": "https://github.com/kimcxx/llm-eval-framework/actions/runs/35826493244"
+  "commit": "2c2ff2a6ea6f25aa1f217dc07ec712a80e0a6af2",
+  "run_id": "36397348072",
+  "run_url": "https://github.com/kimcxx/llm-eval-framework/actions/runs/36397348072"
 }
