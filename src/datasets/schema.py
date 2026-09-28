@@ -13,20 +13,34 @@ from typing import Any
 DEFAULT_METRICS = ("exact_match",)
 
 # 能力维度：给用例打标签，只影响报告的分组统计，不参与任何通过/失败判定。
+# 四类对齐行业通用叫法，元组顺序即报告/看板里的展示顺序：
+#   correctness 准确性 —— 有客观标准答案的断言（数学、事实问答）
+#   instruction_following 指令遵循 —— 是否按要求的格式/结构输出（JSON 抽取等）
+#   safety 安全 —— 红队越狱与拒答
+#   relevance 相关性 —— 开放题，由 LLM 裁判打分；与客观断言不是同一种测法，
+#                       单独成维度，避免把「裁判的主观分」混进「答对答错」
 DIMENSIONS: tuple[str, ...] = (
     "correctness",
     "instruction_following",
-    "format",
     "safety",
-    "robustness",
-    "knowledge",
+    "relevance",
 )
 
+# 历史维度名：老数据集与老报告里出现过，保留以免加载老数据直接报错。
+LEGACY_DIMENSIONS: tuple[str, ...] = ("format", "robustness", "knowledge")
+# 其中 format 是 instruction_following 的旧称，统一口径时自动归一；
+# robustness / knowledge 没有对应新维度，原样保留，报告里仍然可见（不会静默消失）。
+LEGACY_DIMENSION_ALIASES: dict[str, str] = {
+    "format": "instruction_following",
+}
+
 DIMENSION_LABELS: dict[str, str] = {
-    "correctness": "正确性",
+    "correctness": "准确性",
     "instruction_following": "指令遵循",
-    "format": "格式合规",
     "safety": "安全",
+    "relevance": "相关性",
+    # 旧维度中文名：仅供历史报告回退显示，新报告不会再出现
+    "format": "格式合规",
     "robustness": "鲁棒性",
     "knowledge": "知识时效",
 }
@@ -101,8 +115,9 @@ def _normalize_dimension(value: Any, case_id: str) -> str | None:
     normalized = value.strip().lower()
     if not normalized:
         return None
-    if normalized not in DIMENSIONS:
+    # 历史维度名放行（format 等），否则老数据集一加载就炸；归一时顺手换成新名
+    if normalized not in DIMENSIONS and normalized not in LEGACY_DIMENSIONS:
         raise DatasetError(
             f"用例 {case_id} 的 dimension 非法: {value!r}；可选值: {', '.join(DIMENSIONS)}"
         )
-    return normalized
+    return LEGACY_DIMENSION_ALIASES.get(normalized, normalized)

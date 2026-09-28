@@ -112,9 +112,133 @@ def diff_cases(curr_cases, base_cases):
 # 数据全部来自 api/reports.json + 已有的 diff_cases 逻辑，不加新接口。
 
 _BANNER_DIM_LABELS = {
-    'correctness': '正确性', 'instruction_following': '指令遵循', 'format': '格式合规',
-    'safety': '安全', 'robustness': '鲁棒性', 'knowledge': '知识时效', 'untagged': '未标注',
+    'correctness': '准确性', 'instruction_following': '指令遵循', 'safety': '安全',
+    'relevance': '相关性', 'format': '格式合规', 'robustness': '鲁棒性',
+    'knowledge': '知识时效', 'untagged': '未标注',
 }
+
+# ============================== 能力维度口径 ============================== #
+# 四类维度：准确性 / 指令遵循 / 安全 / 相关性。开放题（qa_open）走 LLM 裁判，
+# 与「有客观答案的断言」不是同一种测法，单列「相关性」。
+# 下面三张表与 src 侧保持一一对应（tests/test_dashboard_dimensions.py 守护）：
+DIMENSION_ORDER = ('correctness', 'instruction_following', 'safety', 'relevance')
+CATEGORY_DIMENSION = {
+    'json_extract': 'instruction_following',
+    'math_reasoning': 'correctness',
+    'qa_open': 'relevance',
+    'qa_zh': 'correctness',
+    'safety_redteam': 'safety',
+}
+# 旧维度名 → 新维度名（format 是指令遵循的旧称）
+LEGACY_DIMENSION_ALIASES = {'format': 'instruction_following'}
+
+
+def _dimension_key(raw):
+    """把报告里的维度名 / 分类名归一成四类维度之一。
+
+    认不出的原样返回：宁可在报告里看到一行陌生维度，也不要静默丢掉数据。
+    """
+    key = str(raw or '').strip().lower()
+    if not key:
+        return None
+    if key in LEGACY_DIMENSION_ALIASES:
+        return LEGACY_DIMENSION_ALIASES[key]
+    if key in CATEGORY_DIMENSION:  # 老报告给的是 category，按表换算
+        return CATEGORY_DIMENSION[key]
+    return key
+
+
+def _case_dimension(case):
+    """单条用例归到哪个维度：**已知分类一律按分类重算**，未知分类才用自带 dimension。
+
+    老报告的 ``cases[]`` 里存的 dimension 是旧口径（qa_open 记在 correctness），
+    照抄会让详情页出现「准确性 50 题」而首页重算是 42 题——又是两套数字。新报告
+    的打标与分类映射本来就一致，重算不改变它们；自定义分类才退回用例自带的标签
+    （那是数据集作者更精确的表达）。
+    """
+    if not isinstance(case, dict):
+        return None
+    key = str(case.get('category') or '').strip().lower()
+    if key in CATEGORY_DIMENSION:
+        return CATEGORY_DIMENSION[key]
+    return _dimension_key(case.get('dimension') or case.get('category'))
+
+
+def _dimension_summary(doc, model):
+    """算一份报告的「各维度通过率」行，供首页维度速览展示。
+
+    数据源按优先级：
+
+    1. ``categories`` 段 —— 按「分类 → 维度」**重算**。老报告的 dimensions 段是
+       生成时按旧口径分组的（qa_open 并进了 correctness），改不了；重算才能让
+       老报告与新报告同一口径，满足「qa_open 不再出现在准确性里」。
+    2. ``cases[]`` —— 逐条按 category 归并（categories 段缺失时的兜底）
+    3. ``dimensions`` 段 —— 前两者都没有时的最后兜底（老维度名在此归一）
+
+    返回 ``[{dimension, label, total, passed, pass_rate}]``，按 DIMENSION_ORDER
+    排序；什么都取不到时返回空列表（前端不渲染该行，而不是画一排 0%）。
+    """
+    if not isinstance(doc, dict):
+        return []
+
+    agg: dict[str, list[int]] = {}
+    # 已经聚合过、但没留样本量的行（dimensions 段里只有 pass_rate 的老数据）
+    precounted: list[dict] = []
+
+    def add(dim, total, passed):
+        if not dim or not total:
+            return
+        bucket = agg.setdefault(dim, [0, 0])
+        bucket[0] += int(total)
+        bucket[1] += int(passed)
+
+    def build_row(dim, total, passed):
+        return {
+            'dimension': dim,
+            'label': _BANNER_DIM_LABELS.get(dim, dim),
+            'total': total,
+            'passed': passed,
+            'pass_rate': (passed / total) if total else 0.0,
+        }
+
+    # 1) categories 段（老报告 / dashboard/data 普遍有）
+    for row in (_candidates_for(doc.get('categories'), model) or []):
+        if isinstance(row, dict):
+            add(_dimension_key(row.get('category')), row.get('total', 0), row.get('passed', 0))
+
+    # 2) cases[] 逐条归并
+    if not agg:
+        for case in (doc.get('cases') or []):
+            if not isinstance(case, dict):
+                continue
+            if model and case.get('model') and case.get('model') != model:
+                continue
+            add(_case_dimension(case), 1, 1 if case.get('passed') is True else 0)
+
+    # 3) dimensions 段（口径是生成时的，仅作兜底）
+    if not agg:
+        for row in (_candidates_for(doc.get('dimensions'), model) or []):
+            if not isinstance(row, dict):
+                continue
+            dim = _dimension_key(row.get('dimension'))
+            if not dim:
+                continue
+            if row.get('total'):
+                add(dim, row.get('total', 0), row.get('passed', 0))
+            else:
+                # 只有通过率、没留样本量：原样保留这一行，别因为缺字段整份丢掉
+                precounted.append({
+                    'dimension': dim,
+                    'label': _BANNER_DIM_LABELS.get(dim, dim),
+                    'total': None,
+                    'passed': None,
+                    'pass_rate': float(row.get('pass_rate') or 0.0),
+                })
+
+    order = {name: index for index, name in enumerate(DIMENSION_ORDER)}
+    rows = [build_row(dim, counts[0], counts[1]) for dim, counts in agg.items()] or precounted
+    rows.sort(key=lambda row: (order.get(str(row['dimension']), len(DIMENSION_ORDER)), str(row['dimension'])))
+    return rows
 
 
 def _is_mock(name):
@@ -176,49 +300,25 @@ def _representative_rate(entry, model):
 
 
 def _weakest_dimension(doc, model):
-    """从报告里选「指定模型」的最弱 dimension / category。返回 ``(label, rate)`` 或 ``None``。
+    """从报告里挑最弱的能力维度，返回 ``(label, rate)`` 或 ``None``。
 
-    数据结构兼容（按优先级）：
-    1. ``dimensions``: ``dict[model] -> list[{dimension, label, ..., pass_rate}]``（runner 新输出）
-    2. ``categories``: ``dict[model] -> list[{category, total, passed, failed, pass_rate}]``（老格式 / dashboard/data）
+    **口径唯一**：委托给 ``_dimension_summary()``（categories 重算 → cases →
+    dimensions 兜底，旧维度名在此归一）。以前这里直接读报告里存的 ``dimensions``
+    段，而那份聚合是生成时的快照：改口径后就变成「correctness 50 题（含 qa_open）」
+    这种过期数字，和首页速览的 42 题对不上。现在首页卡片、banner、详情页维度表
+    全部走 ``_dimension_summary`` 的同一份结果。
 
-    两层都兼容：找不到时返回 ``None``，前端 banner 显示 "—" 而不崩。
-    ``untagged`` 不参与最弱选择（用户看不到意义），但全 ``untagged`` 时仍返回自身。
-    ``mock-*`` 是对照组：只在没有真实模型可挑时才参与（详见 ``_candidates_for``）。
+    ``untagged`` 不参与最弱选择（用户看不到意义），但全 ``untagged`` 时仍返回
+    自身；取不到数据时返回 ``None``，前端显示 "—"。``mock-*`` 是对照组：只在没有
+    真实模型可挑时才参与（详见 ``_candidates_for``）。
     """
-    if not isinstance(doc, dict):
+    rows = _dimension_summary(doc, model)
+    if not rows:
         return None
 
-    # 1) dimensions 优先（runner 新输出）
-    candidates = _candidates_for(doc.get('dimensions'), model)
-
-    if candidates:
-        valid = [d for d in candidates if isinstance(d, dict) and d.get('dimension')]
-        if valid:
-            pool = [d for d in valid if d.get('dimension') != 'untagged'] or valid
-            weakest = min(pool, key=lambda d: d.get('pass_rate', 1.0))
-            label = _BANNER_DIM_LABELS.get(
-                weakest.get('dimension'),
-                weakest.get('label') or weakest.get('dimension'),
-            )
-            return (label, weakest.get('pass_rate', 0.0))
-
-    # 2) categories fallback（dashboard/data 老数据，runner 老版本）
-    candidates = _candidates_for(doc.get('categories'), model)
-
-    if candidates:
-        # 过滤 total=0 的空桶，避免被"尚未跑该 category"的零分拉低
-        valid = [
-            d for d in candidates
-            if isinstance(d, dict) and d.get('category') and d.get('total', 0) > 0
-        ]
-        if valid:
-            weakest = min(valid, key=lambda d: d.get('pass_rate', 1.0))
-            cat = weakest.get('category')
-            label = _BANNER_DIM_LABELS.get(cat, cat)
-            return (label, weakest.get('pass_rate', 0.0))
-
-    return None
+    pool = [r for r in rows if r['dimension'] != 'untagged'] or rows
+    weakest = min(pool, key=lambda r: r['pass_rate'])
+    return (weakest['label'], weakest['pass_rate'])
 
 
 def compute_banner(curr_entry, curr_doc, base_entry=None, base_doc=None):
@@ -392,6 +492,106 @@ def compute_conclusion(report):
     return {'rank': rank, 'judge': judge, 'anomalies': anomalies, 'text': text}
 
 
+# ============================== 详情页「报告属性」 ============================== #
+# 首页筛选器把报告分成「回归 / 稳定性」两类，那是**单选**维度，够筛但不够描述：
+# full-repeat3 这种「既全量又是 repeat=3」的报告会被压成其中一个标签，另一半信息丢掉。
+# 详情页顶部改成并排列出三个正交属性：范围 × 重复次数 × 判定口径。
+#
+# 口径说明（四维齐 = 全量）：数据集全集本身就覆盖四个维度（数学/事实问答 → 准确性，
+# JSON 抽取 → 指令遵循，红队 → 安全，开放题 → 相关性），所以「四维都在」≈ 跑了全量；
+# 只跑了其中几维的报告（如 --categories json_extract,qa_open）标为子集。
+
+ATTRIBUTE_NOTES = {
+    'full': '覆盖四个能力维度，等于跑了数据集全集',
+    'subset': '只跑了部分数据集/分类，横向对比时要先看覆盖到哪几维',
+}
+
+
+def _covered_dimensions(doc):
+    """报告实际覆盖到哪些维度（去重，按 DIMENSION_ORDER 排序）。
+
+    优先按 ``cases[]`` 逐条算（老报告没有 dimensions 段也能算出来）；
+    没有 cases 时才退回报告里存的 ``dimensions`` 段。
+    """
+    keys = set()
+    for case in (doc.get('cases') or []):
+        key = _case_dimension(case)
+        if key:
+            keys.add(key)
+
+    if not keys:
+        for row in (_candidates_for(doc.get('dimensions'), None) or []):
+            if isinstance(row, dict):
+                key = _dimension_key(row.get('dimension'))
+                if key:
+                    keys.add(key)
+
+    order = {name: index for index, name in enumerate(DIMENSION_ORDER)}
+    return sorted(keys, key=lambda k: (order.get(k, len(DIMENSION_ORDER)), k))
+
+
+def _report_repeat(doc):
+    """报告的重复次数：优先顶层 repeat，老报告从 cases 里推断。"""
+    repeat = int(doc.get('repeat') or 0)
+    if repeat > 1:
+        return repeat
+    for case in (doc.get('cases') or []):
+        if not isinstance(case, dict):
+            continue
+        n = int(case.get('repeat') or 0) or len(case.get('attempts') or [])
+        if n > 1:
+            return n
+    return 1
+
+
+def compute_attributes(doc):
+    """详情页属性条的数据。纯函数，供 Python 单测与前端共享。
+
+    返回 dict：
+    - ``scope``: ``'full'`` / ``'subset'``；``scope_label``: 全量 / 子集
+    - ``dimensions``: 覆盖到的维度中文名列表
+    - ``coverage_text``: 「四维全覆盖」或「准确性、安全」
+    - ``repeat``: 每条用例执行次数（老报告缺省 1）
+    - ``verdict``: 判定口径——「稳定率」（repeat>1）/「通过率」
+    - 三者的 ``*_note``：hover 提示文案
+    """
+    if not isinstance(doc, dict):
+        doc = {}
+
+    dims = _covered_dimensions(doc)
+    labels = [_BANNER_DIM_LABELS.get(d, d) for d in dims]
+    is_full = set(DIMENSION_ORDER).issubset(set(dims))
+    repeat = _report_repeat(doc)
+
+    if not dims:
+        coverage_text = '未识别到维度'
+    elif is_full:
+        coverage_text = '四维全覆盖'
+    else:
+        coverage_text = '、'.join(labels)
+
+    verdict = '稳定率' if repeat > 1 else '通过率'
+
+    return {
+        'scope': 'full' if is_full else 'subset',
+        'scope_label': '全量' if is_full else '子集',
+        'dimensions': labels,
+        'coverage_text': coverage_text,
+        'scope_note': ATTRIBUTE_NOTES['full' if is_full else 'subset'],
+        'repeat': repeat,
+        'repeat_note': (
+            f"每条用例独立跑 {repeat} 次，重复 {repeat} 次全通过才算通过"
+            if repeat > 1 else '每条用例跑 1 次，单次结果即通过与否'
+        ),
+        'verdict': verdict,
+        'verdict_note': (
+            '以稳定率为准：单次通过率会被随机性带偏'
+            if repeat > 1 else '以单次通过率为准'
+        ),
+        'is_stability': repeat > 1,
+    }
+
+
 # 模板里的 __METRIC_LABELS__ 在导入时替换成真实的中文标签映射，
 # 保证「Python 单测可见的 METRIC_LABELS」与「前端渲染用的 METRIC_LABELS」是同一份数据。
 PAGE_TEMPLATE = """<!DOCTYPE html>
@@ -441,6 +641,28 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   /* 报告类型标签：回归测试（单次）与稳定性测试（repeat>1）用不同颜色，避免视觉混淆 */
   .badge.rtype-reg { background: rgba(79,142,247,.18); color: var(--accent); }
   .badge.rtype-stab { background: rgba(163,113,247,.18); color: #a371f7; }
+  /* 首页卡片副行：紧贴报告行下方，不参与点击跳转 */
+  tr.dimrow td { padding: 0 10px 9px; border-bottom: 1px solid rgba(42,54,80,.5); color: var(--muted); font-size: 13px; white-space: normal; }
+  tr.dimrow .dimchip { display: inline-block; }
+  tr.dimrow .dimchip.dimmock { opacity: .55; }
+  /* 详情页「维度 × 模型」对比矩阵 */
+  table.matrix th, table.matrix td { text-align: center; white-space: nowrap; }
+  table.matrix th:first-child, table.matrix td:first-child { text-align: left; white-space: normal; }
+  table.matrix th.col-mock { font-weight: 400; opacity: .65; }
+  table.matrix td.col-mock { opacity: .5; }
+  table.matrix tr.subrow { background: var(--panel2); }
+  table.matrix tr.spread-row { background: rgba(255,214,102,.11); }
+  table.matrix tr.subrow.spread-row { background: rgba(255,214,102,.06); }
+  table.matrix td.spread-alert { color: var(--warn); font-weight: 600; }
+  /* 详情页顶部属性条：范围 × 重复 × 判定口径（三个正交属性并排，不做单选分类） */
+  .attrs { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .attr { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+          padding: 3px 10px; font-size: 13px; color: var(--text); }
+  .attr .attrlabel { color: var(--muted); margin-right: 6px; font-size: 12px; }
+  tr.dimrow .dimsep { opacity: .45; margin: 0 4px; }
+  tr.dimrow .dimlabel { opacity: .55; margin-right: 10px; }
+  tr.dimrow .dimcover { color: var(--muted); opacity: .9; margin-left: 10px; }
+  .badge.dimmodel { background: rgba(122,162,247,.14); color: var(--accent); }
   .attempts { display: flex; gap: 10px; flex-wrap: wrap; }
   .attempt { flex: 1 1 220px; min-width: 200px; background: var(--panel2);
              border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
@@ -542,10 +764,31 @@ const $drawerClose = document.getElementById('drawerClose');
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = x => (x * 100).toFixed(1) + '%';
-// 与后端 src/datasets/schema.py 的 DIMENSION_LABELS 保持一致
-const DIM_LABELS = {correctness:'正确性', instruction_following:'指令遵循', format:'格式合规',
-                    safety:'安全', robustness:'鲁棒性', knowledge:'知识时效', untagged:'未标注'};
+// 维度中文标签 / 分类→维度映射：由 Python 侧注入（与 _BANNER_DIM_LABELS /
+// CATEGORY_DIMENSION 是同一份数据），首页速览、详情页维度表、banner 共用一套口径
+const DIM_LABELS = __DIM_LABELS__;
+const CATEGORY_DIMENSION = __CATEGORY_DIMENSION__;
+const LEGACY_DIM_ALIASES = __LEGACY_DIM_ALIASES__;
+const DIMENSION_ORDER = __DIMENSION_ORDER__;
 const dimLabel = d => d ? (DIM_LABELS[d] || d) : '未标注';
+// 老报告的 cases 没有 dimension 字段（或写的是旧名 format）：按分类换算成四类之一，
+// 否则整份老报告的维度表会全部落进「未标注」
+const dimKeyOf = raw => {
+  const k = String(raw || '').trim().toLowerCase();
+  if (!k) return 'untagged';
+  if (LEGACY_DIM_ALIASES[k]) return LEGACY_DIM_ALIASES[k];
+  if (CATEGORY_DIMENSION[k]) return CATEGORY_DIMENSION[k];
+  return k;
+};
+// 单条用例归到哪个维度：已知分类一律按分类重算，未知分类才用用例自带的 dimension。
+// 老报告的 cases 里存的 dimension 是旧口径（qa_open 记在 correctness），照抄会让
+// 详情页出现「准确性 50 题」而首页是 42 题——又是两套数字。新报告的打标与分类
+// 映射本来就一致，重算不会改变它们。
+const caseDimOf = c => {
+  const cat = String((c && c.category) || '').trim().toLowerCase();
+  if (CATEGORY_DIMENSION[cat]) return CATEGORY_DIMENSION[cat];
+  return dimKeyOf((c && c.dimension) || cat);
+};
 // 指标中文标签：由后端 METRIC_LABELS 注入（与 Python 侧同一份数据），未收录的原样显示
 const METRIC_LABELS = __METRIC_LABELS__;
 const metricLabel = m => METRIC_LABELS[m] || m;
@@ -574,6 +817,31 @@ const caseCountText = r => {
 // 列表「通过率 / 稳定率」列：稳定性报告取 stability（严格通过率放详情页），
 // 老报告没有 stability 时退回 pass_rate，不出现空白
 const listRate = (r, x) => (isStability(r) && x && x.stability != null) ? x.stability : (x ? x.pass_rate : 0);
+// 首页卡片副行：一行 chips 列出**每个模型**的整体通过率（chat 93.9% · pro 92.9% …）。
+// 为什么是模型总览而不是维度速览：维度速览只显示一个代表模型（跳过 mock 取第一个真模型），
+// 读者会把它当成整份报告的成绩——标注了模型名也只是缓解，仍然是「一堆维度 + 一个模型」。
+// 横向评测的价值在于对比，所以首页给模型之间的对比数字；维度 × 模型的对比留给
+// 详情页的矩阵（信息更全，还带分类子行和最大差值）。末尾保留覆盖标注：
+// 「只跑了安全」和「全量」必须一眼能分开，否则 93.3% 会被误读成比 34.7% 强。
+const modelOverviewRowHtml = r => {
+  if (!r) return '';
+  const rows = (r.model_rows && r.model_rows.length)
+    ? r.model_rows
+    : (r.model && r.model !== '?' ? [{model: r.model, pass_rate: r.pass_rate || 0}] : []);
+  const dims = r.dimensions || [];
+  if (!rows.length && !dims.length) return '';
+  const chips = rows.map(m =>
+    `<span class="dimchip${isMockModel(m.model) ? ' dimmock' : ''}">${esc(m.model)} `
+    + `<b class="rate" style="color:${rateColor(m.pass_rate || 0)}">${pct(m.pass_rate || 0)}</b></span>`
+  ).join('<span class="dimsep">·</span>');
+  const coverage = dims.length >= 4
+    ? '全部四维'
+    : ((r.dimension_coverage && r.dimension_coverage.length)
+        ? r.dimension_coverage.join('、')
+        : '—');
+  return `<tr class="dimrow"><td colspan="7"><span class="dimlabel">模型</span>${chips}`
+    + `<span class="dimcover">覆盖：${esc(coverage)}</span></td></tr>`;
+};
 // 「2/3」+ 抖动标记
 const repeatCell = c => {
   const n = repeatOf(c);
@@ -631,6 +899,77 @@ function diffCases(currCases, baseCases) {
   return {regressed, fixed, stillFailing, onlyInCurr, onlyInBase};
 }
 
+// 维度聚合的唯一实现（与后端 _dimension_summary 同契约）：
+// categories 段按「分类 → 维度」重算 → cases[] 逐条归并 → dimensions 段兜底。
+// 报告里存的 dimensions 段是生成时的快照（口径可能是旧的），所以只能兜底：
+// banner、首页速览、详情页维度表都必须走这里，否则各处各算一套就会互相打脸。
+function dimensionSummary(doc, model) {
+  if (!doc || typeof doc !== 'object') return [];
+  const agg = new Map();
+  const add = (rawDim, total, passed) => {
+    if (!rawDim) return;
+    const dim = dimKeyOf(rawDim);
+    const t = Number(total) || 0;
+    if (!t) return;
+    const b = agg.get(dim) || [0, 0];
+    b[0] += t;
+    b[1] += Number(passed) || 0;
+    agg.set(dim, b);
+  };
+  // 与后端 _candidates_for 同契约：指定模型缺席时跳过 mock-* 对照组
+  const pickGroup = (g) => {
+    if (!g) return null;
+    if (Array.isArray(g)) return g;
+    if (typeof g !== 'object') return null;
+    const own = g[model];
+    if (Array.isArray(own)) return own;
+    const entries = Object.entries(g);
+    const real = entries.find(([k, v]) => Array.isArray(v) && !String(k).startsWith('mock-'));
+    if (real) return real[1];
+    const any = entries.find(([, v]) => Array.isArray(v));
+    return any ? any[1] : null;
+  };
+
+  (pickGroup(doc.categories) || []).forEach(row => row && add(row.category, row.total, row.passed));
+  if (!agg.size) {
+    (doc.cases || []).forEach(c => {
+      if (!c) return;
+      if (model && c.model && c.model !== model) return;
+      add(c.dimension || c.category, 1, c.passed === true ? 1 : 0);
+    });
+  }
+  // dimensions 段兜底：样本量缺失的老数据只带 pass_rate，原样保留别丢
+  const precounted = [];
+  if (!agg.size) {
+    (pickGroup(doc.dimensions) || []).forEach(row => {
+      if (!row || !row.dimension) return;
+      const dim = dimKeyOf(row.dimension);
+      if (Number(row.total) || 0) { add(row.dimension, row.total, row.passed); return; }
+      precounted.push({
+        dimension: dim, label: dimLabel(dim), total: null, passed: null,
+        pass_rate: Number(row.pass_rate) || 0,
+      });
+    });
+  }
+  if (!agg.size && !precounted.length) return [];
+
+  const order = Array.isArray(DIMENSION_ORDER) ? DIMENSION_ORDER : [];
+  const rows = agg.size
+    ? Array.from(agg.entries()).map(([dim, counts]) => ({
+        dimension: dim,
+        label: dimLabel(dim),
+        total: counts[0],
+        passed: counts[1],
+        pass_rate: counts[0] ? counts[1] / counts[0] : 0,
+      }))
+    : precounted;
+  return rows.sort((a, b) => {
+    const ia = order.indexOf(a.dimension), ib = order.indexOf(b.dimension);
+    const ra = ia < 0 ? order.length : ia, rb = ib < 0 ? order.length : ib;
+    return (ra - rb) || String(a.dimension).localeCompare(String(b.dimension));
+  });
+}
+
 // 首页最顶部"大字结论"banner：复用现有 api/reports.json + api/report/{file}，不加新接口
 async function computeBannerData(reports) {
   if (!reports || !reports.length) return null;
@@ -670,46 +1009,16 @@ async function computeBannerData(reports) {
   const regressed = diff ? diff.regressed.length : 0;
   const fixed = diff ? diff.fixed.length : 0;
 
-  // 最弱维度：dimensions 优先；dashboard/data 老报告只有 categories，兼容 fallback
+  // 最弱维度：走 dimensionSummary（categories 重算优先），与首页速览同一口径。
+  // 不能直接读 currDoc.dimensions —— 那是报告生成时的旧口径快照。
   let weakest = null;
   if (currDoc) {
-    // 与后端 _candidates_for 同契约：指定模型缺席时跳过 mock-* 对照组，
-    // 全是 mock 的报告才退回任意一组，两边口径必须一致。
-    const findCandidates = (group) => {
-      if (!group) return null;
-      if (Array.isArray(group)) return group;
-      if (group[representative] && Array.isArray(group[representative])) return group[representative];
-      const entries = Object.entries(group);
-      const real = entries.find(([k, v]) => Array.isArray(v) && !String(k).startsWith('mock-'));
-      if (real) return real[1];
-      const any = entries.find(([, v]) => Array.isArray(v));
-      return any ? any[1] : null;
-    };
-
-    // 1) dimensions 优先（runner 新输出）
-    const dimCands = findCandidates(currDoc.dimensions);
-    if (dimCands && dimCands.length) {
-      const valid = dimCands.filter(d => d && d.dimension);
-      const noUntagged = valid.filter(d => d.dimension !== 'untagged');
-      const pool = noUntagged.length ? noUntagged : valid;
-      if (pool.length) {
-        const w = pool.reduce((a, b) => (a.pass_rate <= b.pass_rate ? a : b));
-        weakest = { label: DIM_LABELS[w.dimension] || w.label || w.dimension, rate: w.pass_rate };
-      }
-    }
-
-    // 2) categories fallback（dashboard/data 老数据）
-    if (!weakest) {
-      const catCands = findCandidates(currDoc.categories);
-      if (catCands && catCands.length) {
-        // 过滤 total=0 的空桶
-        const valid = catCands.filter(d => d && d.category && (d.total || 0) > 0);
-        if (valid.length) {
-          const w = valid.reduce((a, b) => (a.pass_rate <= b.pass_rate ? a : b));
-          // DIM_LABELS 翻译优先（safety→安全 等），命中不了就原样输出 category 名
-          weakest = { label: DIM_LABELS[w.category] || w.category, rate: w.pass_rate };
-        }
-      }
+    const dimRows = dimensionSummary(currDoc, representative);
+    const pool = dimRows.filter(d => d.dimension !== 'untagged');
+    const usable = pool.length ? pool : dimRows;
+    if (usable.length) {
+      const w = usable.reduce((a, b) => (a.pass_rate <= b.pass_rate ? a : b));
+      weakest = { label: w.label, rate: w.pass_rate };
     }
   }
 
@@ -811,11 +1120,26 @@ async function renderList(reports) {
           <td>${pfCell}</td>
           ${rateCellHtml}
           <td>${p95Cell}</td>
-        </tr>`;
+        </tr>
+        ${modelOverviewRowHtml(r)}`;
       }).join('')}
     </table>
     ${hasStability ? `<div class="hint" style="padding:10px 12px 0">「稳定性测试」= 每条用例重复跑 N 次，用例列显示「单模型用例数 × 重复次数」，通过率列显示<b>稳定率</b>（要求 N 次全过的严格通过率见报告详情）；「回归测试」= 每条用例跑 1 次。</div>` : ''}
     </div>`;
+}
+
+// 详情页属性条：范围 × 重复次数 × 判定口径，三个正交属性并排列出。
+// 首页筛选器要的是「单选分类」（回归 / 稳定性），但 full-repeat3 这种「既全量又
+// repeat=3」的报告用单选会丢掉一半信息，所以详情页改成并列的三个属性。
+function attributesBar(a) {
+  if (!a) return '';
+  const chip = (label, text, tip) => `<span class="attr"${tip ? ` title="${esc(tip)}"` : ''}>`
+    + `<span class="attrlabel">${esc(label)}</span>${esc(text)}</span>`;
+  return `<div class="attrs">
+    ${chip('范围', a.scope_label + (a.coverage_text ? `（${a.coverage_text}）` : ''), a.scope_note)}
+    ${chip('重复', `repeat=${a.repeat}`, a.repeat_note)}
+    ${chip('判定', a.verdict, a.verdict_note)}
+  </div>`;
 }
 
 // 渲染详情页框架（标题 + tabs + 当前 tab 内容）
@@ -826,6 +1150,7 @@ async function renderDetail(file, tab) {
     <h1>${esc(file)}</h1>
     <div class="sub">${esc(r.started_at || '')} · ${r.case_count} 用例 · ${((r.duration_s ?? 0)).toFixed(2)}s
       · 数据集：${esc((r.datasets || []).join(', '))}</div>
+    ${attributesBar(r._attributes)}
     ${r.notes && r.notes.length ? `<div class="card" style="color:var(--muted);font-size:13px">备注：${esc(r.notes.join('；'))}</div>` : ''}
     <div class="tabs" id="tabs">
       ${[['summary','汇总'],['cases','用例列表'],['diff','跨次对比']].map(([k,name]) =>
@@ -869,7 +1194,7 @@ function buildDimCatGroups(cases) {
   const byModel = new Map();
   (cases || []).forEach(c => {
     const model = c.model || '（无）';
-    const dim = c.dimension || 'untagged';
+    const dim = caseDimOf(c);
     const cat = c.category || '（无）';
     if (!byModel.has(model)) byModel.set(model, new Map());
     const dims = byModel.get(model);
@@ -901,34 +1226,127 @@ function buildDimCatGroups(cases) {
     || String(a.dimension).localeCompare(String(b.dimension)));
 }
 
-function dimCatCard(groups) {
-  if (!groups.length) return '';
-  const rows = groups.map(g => {
-    const untagged = g.dimension === 'untagged';
-    const mainRow = `
-      <tr${untagged ? ' style="opacity:.75"' : ''}>
-        <td>${esc(g.model)}</td>
-        <td><span class="badge">${esc(dimLabel(g.dimension))}</span>
-          ${untagged ? '<span class="catname" style="font-size:12px"> 未打标签</span>' : ''}</td>
-        <td>${g.passed} / ${g.total}${g.skipped ? ` <span class="catname">(跳过 ${g.skipped})</span>` : ''}</td>
-        ${rateCell(g.pass_rate)}
-      </tr>`;
-    const subRows = g.cats.map(c => `
-      <tr style="background:var(--panel2)">
-        <td></td>
-        <td style="padding-left:22px"><span class="catname">↳ ${esc(c.category)}</span></td>
-        <td>${c.passed} / ${c.total}${c.skipped ? ` <span class="catname">(跳过 ${c.skipped})</span>` : ''}</td>
-        ${rateCell(c.pass_rate)}
-      </tr>`).join('');
-    return mainRow + subRows;
+// ---------- 维度 × 模型 对比矩阵 ---------- //
+// 横向评测的核心视图：行 = 能力维度（子行 = 具体分类），列 = 被测模型，格 = 通过率。
+// 把三个模型平铺成三张「模型 → 维度」表没法横向比，必须放进一张表里才看得出
+// 「谁在哪一维掉队」。mock-* 是管道基线不是被测对象，灰显但不隐藏。
+const SPREAD_ALERT_PT = 5;   // 真模型间差距 ≥ 5pt 才高亮，低于这个量级是噪声
+const isMockModel = n => String(n || '').startsWith('mock-');
+
+// 真模型之间通过率的最大差距（百分点）；真模型不足两个时返回 null（显示 —）
+function spreadOf(cellMap, models) {
+  const rates = models
+    .filter(m => !isMockModel(m) && cellMap.get(m))
+    .map(m => cellMap.get(m).pass_rate);
+  if (rates.length < 2) return null;
+  const max = Math.max(...rates), min = Math.min(...rates);
+  return {pt: (max - min) * 100, max, min};
+}
+
+// 把 buildDimCatGroups 的「每个模型一组」结果透视成「维度 × 模型」矩阵
+function buildDimensionMatrix(cases, models) {
+  const groups = buildDimCatGroups(cases || []);
+  const order = Array.from(new Set((models && models.length) ? models : groups.map(g => g.model)));
+  const idx = new Map(order.map((m, i) => [m, i]));
+  // 列序：mock-* 基线放最左，真模型照报告里的顺序（= 配置顺序），避免每次渲染跳列
+  order.sort((a, b) => ((isMockModel(a) ? 0 : 1) - (isMockModel(b) ? 0 : 1))
+    || ((idx.get(a) ?? 99) - (idx.get(b) ?? 99)));
+
+  const dims = new Map();
+  groups.forEach(g => {
+    if (!dims.has(g.dimension)) {
+      dims.set(g.dimension, {
+        dimension: g.dimension, label: dimLabel(g.dimension), cells: new Map(), cats: new Map(),
+      });
+    }
+    const d = dims.get(g.dimension);
+    d.cells.set(g.model, {
+      total: g.total, passed: g.passed, skipped: g.skipped, pass_rate: g.pass_rate,
+    });
+    (g.cats || []).forEach(c => {
+      if (!d.cats.has(c.category)) d.cats.set(c.category, {category: c.category, cells: new Map()});
+      d.cats.get(c.category).cells.set(g.model, {
+        total: c.total, passed: c.passed, skipped: c.skipped, pass_rate: c.pass_rate,
+      });
+    });
+  });
+
+  const rank = d => {
+    const i = DIMENSION_ORDER.indexOf(d);
+    return i < 0 ? DIMENSION_ORDER.length : i;
+  };
+  const rows = Array.from(dims.values())
+    .sort((a, b) => (rank(a.dimension) - rank(b.dimension))
+      || String(a.dimension).localeCompare(String(b.dimension)))
+    .map(d => ({
+      dimension: d.dimension,
+      label: d.label,
+      cells: order.map(m => d.cells.get(m) || null),
+      spread: spreadOf(d.cells, order),
+      cats: Array.from(d.cats.values())
+        .sort((a, b) => String(a.category).localeCompare(String(b.category)))
+        .map(c => ({
+          category: c.category,
+          cells: order.map(m => c.cells.get(m) || null),
+          spread: spreadOf(c.cells, order),
+        })),
+    }));
+  return {models: order, rows};
+}
+
+function dimensionMatrixCard(matrix) {
+  if (!matrix || !matrix.rows.length) return '';
+  const models = matrix.models;
+  const single = models.length <= 1;
+
+  const head = models.map(m => `
+    <th class="${isMockModel(m) ? 'col-mock' : ''}">${esc(m)}${
+      isMockModel(m) ? '<span class="catname" style="font-weight:400"> 基线</span>' : ''}</th>`).join('');
+
+  const cellHtml = (cell, model) => {
+    const cls = isMockModel(model) ? ' class="col-mock"' : '';
+    if (!cell) return `<td${cls}><span class="catname">—</span></td>`;
+    const sub = cell.total
+      ? `<div class="catname" style="font-size:11px">${cell.passed}/${cell.total}${
+          cell.skipped ? ` · 跳过 ${cell.skipped}` : ''}</div>`
+      : '';
+    return `<td${cls} title="${esc(model)}：${cell.passed}/${cell.total}">`
+      + `<b style="color:${rateColor(cell.pass_rate)}">${pct(cell.pass_rate)}</b>${sub}</td>`;
+  };
+  const spreadHtml = s => (s == null
+    ? '<td><span class="catname">—</span></td>'
+    : `<td class="${s.pt >= SPREAD_ALERT_PT ? 'spread-alert' : ''}" title="真模型之间：${
+        pct(s.min)} ~ ${pct(s.max)}">${s.pt.toFixed(1)} pt</td>`);
+
+  // 单模型报告：矩阵退化成一列，「最大差值」无从比较，整列不渲染
+  const rowHtml = (labelHtml, cells, spread, extraCls) => {
+    const hl = (spread && spread.pt >= SPREAD_ALERT_PT) ? ' spread-row' : '';
+    return `<tr class="${extraCls || ''}${hl}">${labelHtml}`
+      + `${cells.map((c, i) => cellHtml(c, models[i])).join('')}`
+      + `${single ? '' : spreadHtml(spread)}</tr>`;
+  };
+
+  const body = matrix.rows.map(r => {
+    const main = rowHtml(
+      `<td><span class="badge">${esc(r.label)}</span>${
+        r.dimension === 'untagged' ? '<span class="catname" style="font-size:12px"> 未打标签</span>' : ''}</td>`,
+      r.cells, r.spread, r.dimension === 'untagged' ? 'dim-untagged' : '');
+    const subs = r.cats.map(c => rowHtml(
+      `<td style="padding-left:22px"><span class="catname">↳ ${esc(c.category)}</span></td>`,
+      c.cells, c.spread, 'subrow')).join('');
+    return main + subs;
   }).join('');
+
   return `
     <div class="card">
-      <div style="font-weight:600;margin-bottom:4px">维度 / 分类通过率</div>
-      <div class="hint">模型在哪类任务上强弱：维度是能力面（主行），分类是具体任务类型（子行）。</div>
-      <table>
-        <tr><th>模型</th><th>维度 / 分类</th><th>通过 / 总数</th><th>通过率</th></tr>
-        ${rows}
+      <div style="font-weight:600;margin-bottom:4px">维度 × 模型 对比矩阵</div>
+      <div class="hint">行 = 能力维度（子行 = 具体分类），列 = 被测模型，格 = 通过率（下方小字为通过 / 总数）。
+        <code>mock-*</code> 是管道基线，灰显、不作为被测对象；${single
+          ? '本报告只有一个模型，矩阵退化为单列。'
+          : `「最大差值」= 真模型之间通过率的最大差距，≥ ${SPREAD_ALERT_PT} pt 的行标黄——那是模型间有实质差异的信号。`}</div>
+      <table class="matrix">
+        <tr><th>维度 / 分类</th>${head}${single ? '' : '<th title="真模型之间通过率的最大差距">最大差值</th>'}</tr>
+        ${body}
       </table>
     </div>`;
 }
@@ -936,7 +1354,8 @@ function dimCatCard(groups) {
 // 汇总 tab：结论 → 模型总览 → 维度/分类 → 指标均值（折叠）
 function renderSummaryTab(r) {
   const s = r.summary || [];
-  const groups = buildDimCatGroups(r.cases || []);
+  // 列顺序照 summary（= 配置顺序），mock-* 由矩阵自己排到最左
+  const matrix = buildDimensionMatrix(r.cases || [], (s || []).map(m => m.model));
   document.getElementById('tabBody').innerHTML = `
     ${conclusionCard(r._conclusion, r)}
     <div class="card">
@@ -958,7 +1377,7 @@ function renderSummaryTab(r) {
           </tr>`).join('')}
       </table>
     </div>
-    ${dimCatCard(groups)}
+    ${dimensionMatrixCard(matrix)}
     ${(s[0] && s[0].metric_avg) ? `
     <details class="card">
       <summary style="font-weight:600">指标均值（首个模型）</summary>
@@ -1400,8 +1819,13 @@ addEventListener('hashchange', () => main());
 </body>
 </html>"""
 
-PAGE = PAGE_TEMPLATE.replace(
-    "__METRIC_LABELS__", json.dumps(METRIC_LABELS, ensure_ascii=False)
+PAGE = (
+    PAGE_TEMPLATE
+    .replace("__METRIC_LABELS__", json.dumps(METRIC_LABELS, ensure_ascii=False))
+    .replace("__DIM_LABELS__", json.dumps(_BANNER_DIM_LABELS, ensure_ascii=False))
+    .replace("__DIMENSION_ORDER__", json.dumps(list(DIMENSION_ORDER), ensure_ascii=False))
+    .replace("__CATEGORY_DIMENSION__", json.dumps(CATEGORY_DIMENSION, ensure_ascii=False))
+    .replace("__LEGACY_DIM_ALIASES__", json.dumps(LEGACY_DIMENSION_ALIASES, ensure_ascii=False))
 )
 
 
@@ -1444,7 +1868,7 @@ def _load_reports():
         }]
         # repeat：老报告（无该字段）按 1 处理 = 单次回归测试
         repeat = int(data.get("repeat", 1) or 1)
-        items.append({
+        entry = {
             "file": p.name,
             "time": (m.group(0) if m else data.get("started_at", "?")),
             "tag": p.stem.split("-")[0] if "-" in p.stem else "run",
@@ -1458,7 +1882,13 @@ def _load_reports():
             "pass_rate": summary.get("pass_rate", 0.0),
             "stability": data.get("stability"),
             "p95": summary.get("p95_latency_ms"),
-        })
+        }
+        # 维度速览：取代表模型（跳过 mock 对照组）的各维度通过率。
+        # 老报告没有 dimensions 段时按 categories 重算，保证与新报告同口径。
+        entry["dim_model"] = _pick_representative_model(entry)
+        entry["dimensions"] = _dimension_summary(data, entry["dim_model"])
+        entry["dimension_coverage"] = [row["label"] for row in entry["dimensions"]]
+        items.append(entry)
     items.sort(key=lambda x: _time_key(x["time"]), reverse=True)
     return items
 
@@ -1547,9 +1977,11 @@ class Handler(SimpleHTTPRequestHandler):
             if fp.suffix == ".json" and fp.is_file():
                 try:
                     data = json.loads(fp.read_text(encoding="utf-8"))
-                    # 汇总 tab 顶部结论由后端算好，前端只渲染（与静态导出保持一致）
+                    # 汇总 tab 结论 + 顶部属性条由后端算好，前端只渲染
+                    # （与静态导出保持一致，且逻辑可被单测覆盖）
                     if isinstance(data, dict):
                         data["_conclusion"] = compute_conclusion(data)
+                        data["_attributes"] = compute_attributes(data)
                     self._json(data)
                 except Exception as e:
                     self._json({"error": str(e)}, 500)

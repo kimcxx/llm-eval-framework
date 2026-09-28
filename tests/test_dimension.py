@@ -75,7 +75,7 @@ class TestDimensionAggregation:
     def _cases(self) -> list[EvalCase]:
         return [
             _case("c1", "1+1", "2", "correctness"),
-            _case("c2", "2+2", "4", "format"),
+            _case("c2", "2+2", "4", "instruction_following"),
             _case("c3", "1+1", "2"),  # 未打标签
         ]
 
@@ -83,7 +83,7 @@ class TestDimensionAggregation:
         report = _runner().run_cases(self._cases())
         assert [g.key for g in report.by_dimension("fake")] == [
             "correctness",
-            "format",
+            "instruction_following",
             "untagged",
         ]
 
@@ -131,7 +131,11 @@ class TestDimensionAggregation:
 
         assert rows[-1]["dimension"] == "untagged"
         assert rows[-1]["label"] == "未标注"
-        assert {r["dimension"] for r in rows} == {"correctness", "format", "untagged"}
+        assert {r["dimension"] for r in rows} == {
+            "correctness",
+            "instruction_following",
+            "untagged",
+        }
         assert payload["cases"][0]["dimension"] == "correctness"
 
     def test_untagged_survives_round_trip_when_no_labels_at_all(self) -> None:
@@ -148,8 +152,10 @@ class TestDimensionLabel:
     @pytest.mark.parametrize(
         ("value", "expected"),
         [
-            ("correctness", "正确性"),
+            ("correctness", "准确性"),
             ("instruction_following", "指令遵循"),
+            ("safety", "安全"),
+            ("relevance", "相关性"),
             ("format", "格式合规"),
             ("safety", "安全"),
             ("robustness", "鲁棒性"),
@@ -170,9 +176,9 @@ class TestDefaultDimensionByCategory:
     @pytest.mark.parametrize(
         ("category", "expected"),
         [
-            ("json_extract", "format"),
+            ("json_extract", "instruction_following"),
             ("math_reasoning", "correctness"),
-            ("qa_open", "correctness"),
+            ("qa_open", "relevance"),
             ("qa_zh", "correctness"),
             ("safety_redteam", "safety"),
         ],
@@ -181,7 +187,7 @@ class TestDefaultDimensionByCategory:
         assert resolve_dimension(category) == expected
 
     def test_declared_wins_over_category(self) -> None:
-        """json_extract 默认 format，但用例写了 safety 就以用例为准。"""
+        """json_extract 默认 instruction_following，但用例写了 safety 就以用例为准。"""
         assert resolve_dimension("json_extract", "safety") == "safety"
 
     @pytest.mark.parametrize("category", ["default", "qa_en", "summary", ""])
@@ -189,7 +195,7 @@ class TestDefaultDimensionByCategory:
         assert resolve_dimension(category) == "untagged"
 
     def test_matching_ignores_case_and_spaces(self) -> None:
-        assert resolve_dimension("  JSON_Extract ") == "format"
+        assert resolve_dimension("  JSON_Extract ") == "instruction_following"
 
     @pytest.mark.parametrize("declared", ["", "   "])
     def test_blank_declared_falls_back_to_category(self, declared: str) -> None:
@@ -211,8 +217,8 @@ class TestDefaultDimensionByCategory:
         )
         report = _runner().run_cases([case])
 
-        assert report.cases[0].dimension == "format"
-        assert [g.key for g in report.by_dimension("fake")] == ["format"]
+        assert report.cases[0].dimension == "instruction_following"
+        assert [g.key for g in report.by_dimension("fake")] == ["instruction_following"]
 
     def test_declared_dimension_survives_in_report(self) -> None:
         case = EvalCase.from_dict(
@@ -235,3 +241,66 @@ class TestDefaultDimensionByCategory:
 
         assert _runner().run_cases([tagged]).cases[0].passed is True
         assert _runner().run_cases([plain]).cases[0].passed is True
+
+
+class TestLegacyDimensionBackCompat:
+    """老数据集 / 老报告里写的是旧维度名（format 等）：不能报错，也不能静默消失。"""
+
+    def test_format_is_normalized_to_instruction_following(self) -> None:
+        """format 是指令遵循的旧称，打标与聚合必须同时换成新名。"""
+        case = EvalCase.from_dict({"id": "a", "prompt": "q", "dimension": "format"})
+        assert case.dimension == "instruction_following"
+
+    def test_legacy_declared_value_is_normalized_on_resolve(self) -> None:
+        assert resolve_dimension("math_reasoning", "FORMAT") == "instruction_following"
+
+    @pytest.mark.parametrize("value", ["robustness", "knowledge"])
+    def test_legacy_without_alias_is_kept_as_is(self, value: str) -> None:
+        """没有对应新维度的旧名原样保留——报告里仍有一行，好过被悄悄丢掉。"""
+        case = EvalCase.from_dict({"id": "a", "prompt": "q", "dimension": value})
+        assert case.dimension == value
+
+    def test_qa_open_is_no_longer_correctness(self) -> None:
+        """开放题走 LLM 裁判，单列「相关性」：这次口径调整的核心，锁死。"""
+        assert resolve_dimension("qa_open") == "relevance"
+
+    def test_legacy_case_does_not_break_aggregation(self) -> None:
+        """老用例写 format，聚合里应该出现在 instruction_following 组而不是新起一组。"""
+        report = _runner().run_cases([_case("c1", "1+1", "2", "format")])
+        assert [g.key for g in report.by_dimension("fake")] == ["instruction_following"]
+
+
+class TestStoredReportUsesNewDimensions:
+    """runner 必须把新维度值写进报告，而不是留给展示层去翻译。
+
+    只在前端映射是兜底：新报告存的是旧三组的话，存储层与展示层就永远对不上。
+    """
+
+    @staticmethod
+    def _cases() -> list[EvalCase]:
+        return [
+            EvalCase.from_dict({
+                "id": "j1", "prompt": "返回 JSON", "expected": '{"a": 1}',
+                "category": "json_extract", "metrics": ["exact_match"],
+            }),
+            EvalCase.from_dict({
+                "id": "q1", "prompt": "开放问答", "expected": "参考答案",
+                "category": "qa_open", "metrics": ["exact_match"],
+            }),
+        ]
+
+    def test_case_result_carries_new_dimension_values(self) -> None:
+        """CaseResult.dimension 直接就是新值，不需要展示层再映射一层。"""
+        report = _runner().run_cases(self._cases())
+        assert {c.dimension for c in report.cases} == {"instruction_following", "relevance"}
+
+    def test_stored_dimensions_segment_is_new_scope(self) -> None:
+        """to_dict() 的 dimensions 段：JSON 抽取不在准确性里，开放题单列相关性。"""
+        payload = _runner().run_cases(self._cases()).to_dict()
+
+        rows = {r["dimension"]: r for r in payload["dimensions"]["fake"]}
+        assert set(rows) == {"instruction_following", "relevance"}
+        assert "correctness" not in rows
+        assert rows["instruction_following"]["label"] == "指令遵循"
+        assert rows["relevance"]["label"] == "相关性"
+        assert {c["dimension"] for c in payload["cases"]} == {"instruction_following", "relevance"}

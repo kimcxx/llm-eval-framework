@@ -11,9 +11,11 @@
       单模型 / 残缺数据时降级到 ``entry['model']``；空 entry 返回 ``'?'``。
     * ``_representative_rate``：按模型在 ``model_rows`` 中取 ``pass_rate``；
       找不到时降级到 ``entry['pass_rate']``。
-    * ``_weakest_dimension``：兼容 ``dict[model] -> list`` 与顶层 ``list``；
-      ``untagged`` 不参与最弱选择（用户看不到意义），但全 ``untagged`` 时仍
-      返回自身（让前端可显示「未标注」而不是 "—"）。
+    * ``_weakest_dimension``：取最弱的能力维度，兼容 ``dict[model] -> list`` 与
+      顶层 ``list``；``untagged`` 不参与最弱选择（用户看不到意义），但全
+      ``untagged`` 时仍返回自身（让前端可显示「未标注」而不是 "—"）。
+      **口径唯一**：它复用 ``_dimension_summary`` 的结果，不直接读报告里存的
+      ``dimensions`` 段（那是生成时的快照，改口径后会过期）。
     * ``compute_banner``：组合以上 + ``diff_cases``；
       - ``base`` 为 ``None`` 或同模型缺席 → ``delta_pt=None``（前端显示 "—"）
       - ``base_doc / curr_doc`` 任一缺失 → ``regressed=0, fixed=0``（不崩）
@@ -102,7 +104,11 @@ class TestRepresentativeRate:
 
 
 class TestWeakestDimension:
-    """从 dimensions 段取最弱维度（label, rate）。"""
+    """挑最弱的能力维度（label, rate）。
+
+    口径唯一：``_weakest_dimension`` 是 ``_dimension_summary`` 的消费者——
+    categories 段按「分类 → 维度」重算优先，报告里存的 dimensions 段只当兜底。
+    """
 
     def test_dict_by_model_shape(self) -> None:
         """多模型报告：``{'model': [...]}`` 结构。"""
@@ -118,9 +124,13 @@ class TestWeakestDimension:
         assert _weakest_dimension(doc, "deepseek-chat") == ("安全", 0.33)
 
     def test_top_level_list_shape(self) -> None:
-        """单模型报告：顶层 ``[...]`` 结构。"""
+        """单模型报告：顶层 ``[...]`` 结构。
+
+        维度名写的是旧名 ``format``，归一成「指令遵循」——banner 与首页维度速览
+        必须叫同一个名字。
+        """
         doc = {"dimensions": [{"dimension": "format", "pass_rate": 0.5}]}
-        assert _weakest_dimension(doc, "any") == ("格式合规", 0.5)
+        assert _weakest_dimension(doc, "any") == ("指令遵循", 0.5)
 
     def test_fallback_to_any_list_when_model_missing(self) -> None:
         """dict 里没目标模型，但有别的模型维度 → fallback 取首份 list。"""
@@ -147,17 +157,46 @@ class TestWeakestDimension:
     def test_fallback_keeps_mock_when_only_mock(self) -> None:
         """全是 mock 的报告（CD 冒烟）：退回对照组自身，而不是显示 "—"。"""
         doc = {"dimensions": {"mock-baseline": [{"dimension": "format", "pass_rate": 0.25}]}}
-        assert _weakest_dimension(doc, "deepseek-chat") == ("格式合规", 0.25)
+        assert _weakest_dimension(doc, "deepseek-chat") == ("指令遵循", 0.25)
 
     def test_categories_fallback_skips_mock_control_group(self) -> None:
-        """categories 兜底路径同样跳过 mock-*（老报告没有 dimensions 段）。"""
+        """categories 兜底路径同样跳过 mock-*（老报告没有 dimensions 段）。
+
+        走的是「分类 → 维度」重算，所以露出的是维度名（指令遵循）而不是分类名
+        （json_extract）——banner 与首页速览必须叫同一个名字。
+        """
         doc = {
             "categories": {
-                "mock-baseline": [{"category": "json_extract", "total": 18, "pass_rate": 0.0}],
-                "deepseek-pro": [{"category": "json_extract", "total": 18, "pass_rate": 0.72}],
+                "mock-baseline": [
+                    {"category": "json_extract", "total": 18, "passed": 0, "pass_rate": 0.0}
+                ],
+                "deepseek-pro": [
+                    {"category": "json_extract", "total": 18, "passed": 13, "pass_rate": 0.72}
+                ],
             }
         }
-        assert _weakest_dimension(doc, "deepseek-chat") == ("json_extract", 0.72)
+        label, rate = _weakest_dimension(doc, "deepseek-chat")
+        assert label == "指令遵循"
+        assert rate == pytest.approx(13 / 18)
+
+    def test_recomputes_categories_instead_of_trusting_stored_dimensions(self) -> None:
+        """本报告存的 dimensions 段是**生成时的旧口径**，不能被 banner 直接采信。
+
+        场景：报告里有 categories（math 20 题 + qa_open 8 题），而 dimensions 段
+        还是「correctness 50 题」的旧聚合（qa_open 被并进准确性）。重算后
+        qa_open 属于相关性，准确性只剩 20 题——banner 必须按新口径走。
+        """
+        doc = {
+            "categories": {"m": [
+                {"category": "math_reasoning", "total": 20, "passed": 20, "pass_rate": 1.0},
+                {"category": "qa_open", "total": 8, "passed": 2, "pass_rate": 0.25},
+            ]},
+            # 过期快照：旧口径把 qa_open 算进了 correctness
+            "dimensions": {"m": [
+                {"dimension": "correctness", "total": 50, "passed": 30, "pass_rate": 0.6},
+            ]},
+        }
+        assert _weakest_dimension(doc, "m") == ("相关性", 0.25)
 
     def test_returns_none_when_no_dimensions(self) -> None:
         """dimensions 段缺失 → None，前端显示 "—"。"""
