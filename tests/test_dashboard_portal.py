@@ -63,9 +63,43 @@ class TestPortalCardContent:
             assert app.PAGE.count(f"sec('{label}'") >= 2, f"{label} 段应在两张卡上都出现"
 
     def test_intro_names_the_subjects(self) -> None:
-        """简介必须点名：deepseek-chat / deepseek-pro / smolagents CodeAgent。"""
+        """简介必须点名：deepseek-chat / deepseek-pro / smolagents ToolCallingAgent。"""
         for name in ("deepseek-chat", "deepseek-pro", "smolagents ToolCallingAgent"):
             assert name in app.PAGE, f"简介段缺少被测对象名：{name}"
+
+
+class TestAgentBrainFollowsData:
+    """Agent 层「被测对象」跟随数据：换了几个大脑就写几个，不许写死。"""
+
+    @staticmethod
+    def _portal_body() -> str:
+        """取出 renderPortal 的函数体：卡片文案是运行时拼的，只能查源码。"""
+        body = app.PAGE[app.PAGE.index("async function renderPortal"):]
+        return body[:body.index("$app.innerHTML")]
+
+    def test_subject_not_hardcoded_to_one_brain(self) -> None:
+        assert "由 <b>deepseek-chat</b> 驱动" not in app.PAGE, (
+            "门户还在写死「由 deepseek-chat 驱动」——已有多个大脑的成绩，这是假话"
+        )
+
+    def test_brains_collected_and_deduped_from_runs(self) -> None:
+        body = self._portal_body()
+        assert "agent.runs" in body, "大脑名单必须来自 agent.json 的 runs"
+        assert "brains.push(name)" in body or "!brains.includes(name)" in body, "同名大脑要去重"
+        assert "DEFAULT_BRAIN" in body, "历史结果没有 brain 字段时要按缺省 deepseek-chat 补"
+
+    def test_subject_text_covers_every_brain(self) -> None:
+        """存在两个大脑时，卡片「被测对象」要同时出现两个名字。"""
+        body = self._portal_body()
+        assert "大脑：" in body, "被测对象段要列出大脑名单"
+        assert body.count("brainsHtml") >= 2, "卡片与简介两段都要用这份大脑名单"
+
+    def test_score_marks_which_brain(self) -> None:
+        """「最新成绩」必须标明这个成绩是哪个大脑跑出来的。"""
+        body = self._portal_body()
+        assert "latestBrain" in body and "aLatest.brain" in body, (
+            "成绩区没有标大脑：换了脑子跑的成绩会被误读成通用结论"
+        )
 
 
 class TestScoringSource:

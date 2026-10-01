@@ -1172,6 +1172,9 @@ async function renderAgent() {
 
 // 一份报告里参与「成绩」的模型行：横向报告取 model_rows，单模型报告取 model 一个。
 const modelsOf = r => (isMultiModel(r) ? r.model_rows : [{ model: r.model }]).filter(x => x && x.model);
+// Agent 结果的历史里有一段没有 brain 字段（那时只有一个大脑），按这个缺省补齐，
+// 与后端 _agent_entry 的口径一致。
+const DEFAULT_BRAIN = 'deepseek-chat';
 // 时间戳 20260923-143903 → 2026-09-23 14:39（门户上要给访问者看日期）
 const fmtTime = t => (t && String(t).length >= 13)
   ? `${String(t).slice(0,4)}-${String(t).slice(4,6)}-${String(t).slice(6,8)} ${String(t).slice(9,11)}:${String(t).slice(11,13)}`
@@ -1212,11 +1215,23 @@ async function renderPortal(reports) {
   const aLatest = (agent && agent.latest) || null;
   const aRs = aLatest && aLatest.repeat_summary;
   const trapCount = (aLatest && Array.isArray(aLatest.traps)) ? aLatest.traps.length : 4;
+  // 被测大脑名单：从 agent.json 的 runs 里去重取全部大脑（后端给每条补了 brain，
+  // 老结果缺省 deepseek-chat）。runs 按时间倒序，翻转一遍就是「首次出场」顺序，
+  // 后面再跑旧大脑也不会把名单顺序打乱。写死某个大脑名，换脑跑完就成了假话。
+  const aRuns = (agent && agent.runs) || [];
+  const brains = [];
+  for (const r of [...aRuns].reverse()) {
+    const name = (r && r.brain) || DEFAULT_BRAIN;
+    if (!brains.includes(name)) brains.push(name);
+  }
+  const brainsHtml = (brains.length ? brains : [DEFAULT_BRAIN]).map(b => `<b>${esc(b)}</b>`).join(' / ');
+  const latestBrain = (aLatest && aLatest.brain) || DEFAULT_BRAIN;
   const agentCard = `
       <div class="ptitle">Agent 层评测</div>
-      ${sec('被测对象', '一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>')}
+      ${sec('被测对象', `smolagents <b>ToolCallingAgent</b> · 大脑：${brainsHtml} · 2 个真实回归工具`)}
       ${sec('怎么测', `${esc(aLatest ? aLatest.total : 10)} 道任务含 ${esc(trapCount)} 道陷阱 · 四层断言 · repeat=${esc(aLatest ? aLatest.repeat : 3)}`)}
       ${aLatest ? sec('最新成绩', `
+        <span class="pchip">大脑 <b>${esc(latestBrain)}</b></span>
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(aLatest.pass_rate || 0)}">${esc(aLatest.passed ?? 0)}/${esc(aLatest.total ?? 0)}</b></span>
         <span class="pchip">工具选择 <b class="rate" style="color:${rateColor(aLatest.tool_rate || 0)}">${pct(aLatest.tool_rate || 0)}</b></span>
         ${aRs ? `<span class="badge ${aRs.全部一致 ? 'pass' : 'warn'}">repeat ${esc(aRs.遍数)} 遍${aRs.全部一致 ? '全部一致' : '存在抖动'}</span>` : ''}
@@ -1226,7 +1241,7 @@ async function renderPortal(reports) {
   $app.innerHTML = `
     <h1>LLM &amp; Agent 评测实验室</h1>
     <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
-      Agent 层：一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>，
+      Agent 层：一个 <b>smolagents ToolCallingAgent</b>，大脑 ${brainsHtml} · 2 个真实回归工具，
       10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
     <div class="portal">
       <a class="pcard" href="#llm">
