@@ -64,7 +64,7 @@ class TestPortalCardContent:
 
     def test_intro_names_the_subjects(self) -> None:
         """简介必须点名：deepseek-chat / deepseek-pro / smolagents CodeAgent。"""
-        for name in ("deepseek-chat", "deepseek-pro", "smolagents CodeAgent"):
+        for name in ("deepseek-chat", "deepseek-pro", "smolagents ToolCallingAgent"):
             assert name in app.PAGE, f"简介段缺少被测对象名：{name}"
 
 

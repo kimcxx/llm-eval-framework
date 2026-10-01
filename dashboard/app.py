@@ -1210,7 +1210,7 @@ async function renderPortal(reports) {
   const trapCount = (aLatest && Array.isArray(aLatest.traps)) ? aLatest.traps.length : 4;
   const agentCard = `
       <div class="ptitle">Agent 层评测</div>
-      ${sec('被测对象', '一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents CodeAgent</b>')}
+      ${sec('被测对象', '一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>')}
       ${sec('怎么测', `${esc(aLatest ? aLatest.total : 10)} 道任务含 ${esc(trapCount)} 道陷阱 · 四层断言 · repeat=${esc(aLatest ? aLatest.repeat : 3)}`)}
       ${aLatest ? sec('最新成绩', `
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(aLatest.pass_rate || 0)}">${esc(aLatest.passed ?? 0)}/${esc(aLatest.total ?? 0)}</b></span>
@@ -1222,7 +1222,7 @@ async function renderPortal(reports) {
   $app.innerHTML = `
     <h1>LLM &amp; Agent 评测实验室</h1>
     <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
-      Agent 层：一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents CodeAgent</b>，
+      Agent 层：一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>，
       10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
     <div class="portal">
       <a class="pcard" href="#llm">
