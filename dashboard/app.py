@@ -713,6 +713,15 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .pwhen { color: var(--muted); font-size: 12px; margin-left: 6px; }
   .pgo { color: var(--accent); font-size: 13px; margin-top: 14px; }
   .pfoot { color: var(--muted); font-size: 12px; margin-top: 14px; text-align: center; }
+  /* h1 下的定位语：先把调门降到「自学实战项目」，免得访问者按生产框架的预期来读 */
+  .plead { margin: 6px 0 10px; font-size: 14px; color: var(--muted); }
+  /* 定位与局限：三组等宽，访问者一眼看完规模 / 没做什么 / 做到了什么 */
+  .pscope { margin-top: 18px; background: var(--panel); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px 20px; }
+  .pscopetitle { font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+  .pscopegrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .pscopeitem .plabel { display: block; min-width: 0; margin-bottom: 2px; }
+  .pvalue { font-size: 13px; line-height: 1.7; }
 
   /* 标签页导航 */
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
@@ -1240,6 +1249,7 @@ async function renderPortal(reports) {
 
   $app.innerHTML = `
     <h1>LLM &amp; Agent 评测实验室</h1>
+    <div class="plead">一个 AI 测试方向的自学实战项目 —— 不是生产级框架，但评测闭环的每个环节都真实跑通。</div>
     <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
       Agent 层：一个 <b>smolagents ToolCallingAgent</b>，大脑 ${brainsHtml} · 2 个真实回归工具，
       10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
@@ -1252,6 +1262,26 @@ async function renderPortal(reports) {
         ${agentCard}
         <div class="pgo">查看 Agent 层详情 →</div>
       </a>
+    </div>
+    <div class="pscope">
+      <div class="pscopetitle">项目定位与局限</div>
+      <div class="pscopegrid">
+        <div class="pscopeitem">
+          <div class="plabel">规模</div>
+          <div class="pvalue">2 个模型（deepseek-chat / deepseek-pro）、98 条模型层用例、
+            10 道 Agent 任务、2 个工具、单轮任务、单一模型供应商。</div>
+        </div>
+        <div class="pscopeitem">
+          <div class="plabel">未覆盖</div>
+          <div class="pvalue">多轮对话状态、RAG 场景、安全红队；
+            repeat=3 的一致性验证样本量有限，只能看抖动、不足以做统计结论。</div>
+        </div>
+        <div class="pscopeitem">
+          <div class="plabel">已跑通的闭环</div>
+          <div class="pvalue">出题 → 判分 → 报告 → CI 门禁 → 误报归因 → 判据修订留痕（meta.v2_changes）
+            → repeat=N 一致性验证。</div>
+        </div>
+      </div>
     </div>
     <div class="pfoot">数据由 CI 回归与本地评测自动更新。</div>`;
 }
