@@ -2,6 +2,7 @@
   "meta": {
     "name": "agent-eval-tasks-v2",
     "created": "2026-09-29",
+    "updated": "2026-09-29",
     "v2_changes": "t08 判据放宽（绕开=合理行为）；t05/t06 金标收紧为「1 道」；t09 金标加 97.6；t06 步数上限 4→6。依据：v1 首跑（8/10）两个 FAIL 均为测试设计问题。",
     "data_source": "reports/report-full-regression-20260923-143903.json",
     "note": "金标全部来自 9/23 全量回归报告真实数据。chat/pro 四维中仅安全维度有差异（25/30 vs 24/30），其余三维完全相同。",

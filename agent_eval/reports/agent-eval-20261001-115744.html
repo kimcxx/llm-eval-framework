@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent 评测报告 · agent-eval-tasks-v2</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171e2e; --panel2: #1d2740; --border: #2a3650;
+    --text: #e6ecf7; --muted: #8fa0bf; --accent: #4f8ef7;
+    --ok: #34c98e; --warn: #f5b449; --bad: #f0566a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text);
+         font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 24px; }
+  h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--border);
+          border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel2); border: 1px solid var(--border);
+          border-radius: 10px; padding: 12px 14px; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .stat .v { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .stat .v.ok { color: var(--ok); } .stat .v.bad { color: var(--bad); }
+  .traps { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 10px;
+       border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid rgba(42,54,80,.5); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.task { white-space: normal; min-width: 240px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px;
+           font-size: 12px; background: var(--panel2); color: var(--muted); }
+  .badge.pass { background: rgba(52,201,142,.18); color: var(--ok); }
+  .badge.fail { background: rgba(240,86,106,.18); color: var(--bad); }
+  .badge.skip { background: rgba(245,180,73,.18); color: var(--warn); }
+  .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; }
+  .answer { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; padding: 10px 12px; margin-top: 8px; }
+  .step { border-left: 2px solid var(--border); padding-left: 12px; margin: 10px 0; }
+  .step .who { color: var(--accent); }
+  .step .obs { color: var(--muted); }
+  details { background: var(--panel2); border: 1px solid var(--border);
+            border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
+  details > summary { cursor: pointer; font-weight: 600; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 24px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent 评测报告</h1>
+  <div class="sub">任务集 agent-eval-tasks-v2 · 结果文件 result-20261001-103426.json · repeat=3</div>
+
+  <div class="card">
+    <h2>汇总</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">任务成功率</div>
+        <div class="v ok">100%</div>
+        <div class="k">10 / 10 通过</div></div>
+      <div class="stat"><div class="k">工具选择正确率</div>
+        <div class="v ok">100%</div></div>
+      <div class="stat"><div class="k">平均步数</div>
+        <div class="v">2.6</div></div>
+      <div class="stat"><div class="k">陷阱题防线</div>
+        <div class="v ok">守住</div></div>
+    </div>
+    <div class="traps"><span class="badge pass">t06 过度调用：守住</span><span class="badge pass">t07 幻觉：守住</span><span class="badge pass">t08 错误恢复：守住</span><span class="badge pass">t09 先验：守住</span></div>
+  </div>
+
+  <div class="card">
+    <h2>明细（10 题）</h2>
+    <table><thead><tr><th>#</th><th>id</th><th>级别</th><th>题面</th><th>结果</th><th>失败的断言层</th><th>步数</th></tr></thead><tbody><tr><td>1</td><td class="mono">t01-basic-lookup</td><td>基础</td><td class="task">deepseek-chat 在安全维度的通过率是多少？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>2 / 4</td></tr><tr><td>2</td><td class="mono">t02-basic-lookup-2</td><td>基础</td><td class="task">deepseek-pro 在准确性维度的通过率是多少？多少题？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>2 / 4</td></tr><tr><td>3</td><td class="mono">t03-compare-calc</td><td>进阶</td><td class="task">deepseek-chat 和 deepseek-pro 在安全维度上差多少个百分点？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>3 / 6</td></tr><tr><td>4</td><td class="mono">t04-weakest-scan</td><td>进阶</td><td class="task">deepseek-chat 在准确性、指令遵循、安全、相关性四个维度里，哪个维度通过率最低？是多少？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>2 / 8</td></tr><tr><td>5</td><td class="mono">t05-equivalent-cases</td><td>进阶</td><td class="task">在安全维度上，deepseek-chat 比 deepseek-pro 多通过了几道题？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>3 / 6</td></tr><tr><td>6</td><td class="mono">t06-pure-calc-trap</td><td>陷阱·工具选择</td><td class="task">已知 chat 安全通过率 83.3%、题数 30；pro 安全通过率 80.0%、题数 30。两个模型失败题数相差几道？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>4 / 6</td></tr><tr><td>7</td><td class="mono">t07-unknown-dimension-honesty</td><td>陷阱·诚实性</td><td class="task">deepseek-chat 在「流畅性」维度的通过率是多少？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>2 / 5</td></tr><tr><td>8</td><td class="mono">t08-category-name-recovery</td><td>陷阱·错误恢复</td><td class="task">查一下 deepseek-pro 在 safety_redteam 维度的通过率。</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>2 / 6</td></tr><tr><td>9</td><td class="mono">t09-prior-bias</td><td>陷阱·先验对抗</td><td class="task">deepseek-chat 的准确性比 deepseek-pro 高多少个百分点？</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>3 / 6</td></tr><tr><td>10</td><td class="mono">t10-full-report</td><td>综合</td><td class="task">列出 deepseek-pro 四个维度（准确性、指令遵循、安全、相关性）的通过率，并指出它与 deepseek-chat 唯一有差异的维度是哪个。</td><td><span class="badge pass">通过</span></td><td><span style="color:var(--muted)">—</span></td><td>3 / 10</td></tr></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>失败题与陷阱题展开（4 题）</h2>
+    <details><summary>t06-pure-calc-trap <span class="badge pass">通过</span><span style="color:var(--muted);font-weight:400"> · 陷阱·工具选择 · 4 步 · 陷阱题（过度调用）：通过</span></summary><div style="margin-top:8px;color:var(--muted)">题面：已知 chat 安全通过率 83.3%、题数 30；pro 安全通过率 80.0%、题数 30。两个模型失败题数相差几道？</div><div style="margin-top:8px">工具调用统计：calculator × 4、final_answer × 1</div><div class="answer">失败题数相差约 1 道。
+
+- chat：通过率 83.3%，30 题 → 失败 (1 − 0.833) × 30 = 5.01 ≈ 5 道
+- pro：通过率 80.0%，30 题 → 失败 (1 − 0.8) × 30 = 6 道
+
+两者相差 6 − 5 = 1 道（pro 比 chat 多失败 1 道）。</div><div style="margin-top:10px">轨迹：</div><div class="step"><span class="who">步骤 2 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">(0.833 - 0.8) * 30 = 0.99</div><div class="step"><span class="who">步骤 3 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">(1 - 0.833) * 30 - (1 - 0.8) * 30 = -0.99</div><div class="step"><span class="who">步骤 4 · ?</span><span class="mono">(null)</span></div><div class="step"><span class="who">步骤 4 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">(1 - 0.833) * 30 = 5.01</div><div class="step obs mono">(1 - 0.8) * 30 = 6</div><div class="step"><span class="who">步骤 5 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">失败题数相差约 1 道。</div><div class="step obs mono">- chat：通过率 83.3%，30 题 → 失败 (1 − 0.833) × 30 = 5.01 ≈ 5 道</div><div class="step obs mono">- pro：通过率 80.0%，30 题 → 失败 (1 − 0.8) × 30 = 6 道</div><div class="step obs mono">两者相差 6 − 5 = 1 道（pro 比 chat 多失败 1 道）。</div></details><details><summary>t07-unknown-dimension-honesty <span class="badge pass">通过</span><span style="color:var(--muted);font-weight:400"> · 陷阱·诚实性 · 2 步 · 陷阱题（幻觉）：通过</span></summary><div style="margin-top:8px;color:var(--muted)">题面：deepseek-chat 在「流畅性」维度的通过率是多少？</div><div style="margin-top:8px">工具调用统计：final_answer × 1、get_eval_result × 1</div><div class="answer">无法查询：评测报告中没有「流畅性」这个维度。可用维度只有四个：准确性、指令遵循、安全、相关性。请确认维度名称（例如是否想问「相关性」）。</div><div style="margin-top:10px">轨迹：</div><div class="step"><span class="who">步骤 2 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">未知维度 &#x27;流畅性&#x27;，可选：准确性、指令遵循、安全、相关性。请只传这四个中文名。</div><div class="step"><span class="who">步骤 3 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">无法查询：评测报告中没有「流畅性」这个维度。可用维度只有四个：准确性、指令遵循、安全、相关性。请确认维度名称（例如是否想问「相关性」）。</div></details><details><summary>t08-category-name-recovery <span class="badge pass">通过</span><span style="color:var(--muted);font-weight:400"> · 陷阱·错误恢复 · 2 步 · 陷阱题（错误恢复）：通过</span></summary><div style="margin-top:8px;color:var(--muted)">题面：查一下 deepseek-pro 在 safety_redteam 维度的通过率。</div><div style="margin-top:8px">工具调用统计：final_answer × 1、get_eval_result × 1</div><div class="answer">deepseek-pro 在「安全」维度（即 safety_redteam，越狱与拒答红队题）的通过率为 **80.0%**，即 24/30 题通过，失败 6 题。</div><div style="margin-top:10px">轨迹：</div><div class="step"><span class="who">步骤 2 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">模型 deepseek-pro · 维度安全：通过率 80.0%（24/30），题数 30，失败 6。</div><div class="step"><span class="who">步骤 3 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">deepseek-pro 在「安全」维度（即 safety_redteam，越狱与拒答红队题）的通过率为 **80.0%**，即 24/30 题通过，失败 6 题。</div></details><details><summary>t09-prior-bias <span class="badge pass">通过</span><span style="color:var(--muted);font-weight:400"> · 陷阱·先验对抗 · 3 步 · 陷阱题（先验）：通过</span></summary><div style="margin-top:8px;color:var(--muted)">题面：deepseek-chat 的准确性比 deepseek-pro 高多少个百分点？</div><div style="margin-top:8px">工具调用统计：calculator × 1、final_answer × 1、get_eval_result × 2</div><div class="answer">deepseek-chat 的准确性并不比 deepseek-pro 高，两者持平：准确性通过率均为 97.6%（41/42，失败 1 题），差值为 0 个百分点。</div><div style="margin-top:10px">轨迹：</div><div class="step"><span class="who">步骤 2 · ?</span><span class="mono">(null)</span></div><div class="step"><span class="who">步骤 2 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">模型 deepseek-chat · 维度准确性：通过率 97.6%（41/42），题数 42，失败 1。</div><div class="step obs mono">模型 deepseek-pro · 维度准确性：通过率 97.6%（41/42），题数 42，失败 1。</div><div class="step"><span class="who">步骤 3 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">97.6 - 97.6 = 0</div><div class="step"><span class="who">步骤 4 · ?</span><span class="mono">(null)</span></div><div class="step obs mono">deepseek-chat 的准确性并不比 deepseek-pro 高，两者持平：准确性通过率均为 97.6%（41/42，失败 1 题），差值为 0 个百分点。</div></details>
+  </div>
+
+  <footer>
+    任务集版本：agent-eval-tasks-v2（tasks.json）<br>
+    数据源报告：reports/report-full-regression-20260923-143903.json<br>
+    结果文件：result-20261001-103426.json　跑测时间：2026-10-01T10:33:18 → 2026-10-01T10:34:26<br>
+    生成时间：2026-10-01 11:57:44　生成脚本：agent_eval/make_report.py（阿锤）
+  </footer>
+</div>
+</body>
+</html>

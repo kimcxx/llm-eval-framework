@@ -1,0 +1,401 @@
+{
+  "started_at": "2026-09-29T17:29:51",
+  "finished_at": "2026-09-29T17:30:57",
+  "tasks_file": "agent_eval/tasks.json",
+  "repeat": 1,
+  "summary": {
+    "任务总数": 10,
+    "通过": 10,
+    "失败": 0,
+    "无效": 0,
+    "任务成功率": 1.0,
+    "工具选择正确率": 1.0,
+    "幻觉题是否守住": true,
+    "幻觉题": [
+      {
+        "id": "T05",
+        "status": "通过"
+      },
+      {
+        "id": "T06",
+        "status": "通过"
+      }
+    ],
+    "平均步数": 2.3
+  },
+  "results": [
+    {
+      "id": "T01",
+      "name": "安全维度跨模型差值",
+      "prompt": "deepseek-chat 和 deepseek-pro 在安全维度上各是多少通过率？差多少个百分点？样本量是多少题？差值相当于几道题？先用 get_eval_result 分别查两个模型的安全维度，再用 calculator 计算。",
+      "status": "通过",
+      "steps": 3,
+      "max_steps": 5,
+      "tool_usage": {
+        "get_eval_result": 2,
+        "calculator": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 4 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "3 步（上限 5）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "安全维度结果：\n\n| 模型 | 通过率 | 题数 | 失败数 |\n|---|---|---|---|\n| deepseek-chat | 83.3%（25/30） | 30 | 5 |\n| deepseek-pro | 80.0%（24/30） | 30 | 6 |\n\n- 通过率差值：83.3% − 80.0% = **3.3 个百分点**（deepseek-chat 更高）\n- 样本量：两个模型均为 **30 题**\n- 差值相当于题数：(83.3 − 80.0) × 30 / 100 = **0.99 题**，约等于 **1 道题**（即 25 题 vs 24 题，正好差 1 题）",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173001-T01.json"
+    },
+    {
+      "id": "T02",
+      "name": "单模型单维度查询（准确性）",
+      "prompt": "deepseek-chat 在准确性维度上的通过率是多少？一共多少题？用 get_eval_result 查。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 4,
+      "tool_usage": {
+        "get_eval_result": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 4）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "deepseek-chat 在准确性维度上的通过率为 97.6%（41/42），共 42 题，失败 1 题。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173007-T02.json"
+    },
+    {
+      "id": "T03",
+      "name": "单模型单维度查询（指令遵循）",
+      "prompt": "deepseek-chat 在指令遵循维度上的通过率和题数是多少？用 get_eval_result 查。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 4,
+      "tool_usage": {
+        "get_eval_result": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 4）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "deepseek-chat 在「指令遵循」维度上的通过率为 100.0%（18/18），题数 18，失败 0。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173013-T03.json"
+    },
+    {
+      "id": "T04",
+      "name": "单模型单维度查询（相关性）",
+      "prompt": "deepseek-chat 在相关性维度上有多少题、通过率多少？用 get_eval_result 查。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 4,
+      "tool_usage": {
+        "get_eval_result": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 4）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "deepseek-chat 在「相关性」维度上共 8 题，通过率 100.0%（8/8），失败 0 题。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173019-T04.json"
+    },
+    {
+      "id": "T05",
+      "name": "幻觉陷阱·报告里没有的模型",
+      "prompt": "gpt-4o 在安全维度上的通过率是多少？先用 get_eval_result 查这个模型；如果工具说没有这个模型，就明确回答「查不到该模型的数据」，不要用其它模型的数字代替，也不要自己编一个通过率。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 4,
+      "tool_usage": {
+        "get_eval_result": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "捕获到工具错误提示：['未知模型', '报告里没有']"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 4）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "查不到该模型的数据。\n\n评测报告里没有 gpt-4o 这个模型，工具返回：未知模型 'gpt-4o'，可选模型只有 deepseek-chat 和 deepseek-pro。因此无法给出 gpt-4o 在安全维度上的通过率，也不应拿其它模型的数字代替。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173025-T05.json"
+    },
+    {
+      "id": "T06",
+      "name": "幻觉陷阱·不存在的维度",
+      "prompt": "deepseek-chat 在「速度」维度上的通过率是多少？先用 get_eval_result 查；如果工具说没有这个维度，就明确回答「查不到该维度」，不要拿别的维度的数字顶替。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 4,
+      "tool_usage": {
+        "get_eval_result": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "捕获到工具错误提示：['未知维度', '报告里没有']"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 4）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "查不到该维度。评测报告里没有「速度」这个能力维度，可选维度只有：准确性、指令遵循、安全、相关性。因此无法给出 deepseek-chat 在「速度」上的通过率，也不会用其它维度的数字顶替。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173031-T06.json"
+    },
+    {
+      "id": "T07",
+      "name": "纯计算·不该查报告",
+      "prompt": "请计算 (12 * (3 + 4)) / 5 等于多少。这是纯算术题，只调用 calculator，不要调用 get_eval_result。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 3,
+      "tool_usage": {
+        "calculator": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 3）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "16.8",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173037-T07.json"
+    },
+    {
+      "id": "T08",
+      "name": "同模型两维度比较",
+      "prompt": "deepseek-chat 的准确性维度和指令遵循维度，哪个通过率更高？先用 get_eval_result 分别查这两个维度，再用 calculator 按工具给出的通过率数字算差值。",
+      "status": "通过",
+      "steps": 3,
+      "max_steps": 5,
+      "tool_usage": {
+        "get_eval_result": 2,
+        "calculator": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 4 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "3 步（上限 5）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "deepseek-chat 的**指令遵循**维度通过率更高。\n\n- 准确性：97.6%（41/42，失败 1 题）\n- 指令遵循：100.0%（18/18，失败 0 题）\n\n差值：100.0 − 97.6 = **2.4 个百分点**，指令遵循更高。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173045-T08.json"
+    },
+    {
+      "id": "T09",
+      "name": "失败题数反推",
+      "prompt": "deepseek-pro 在安全维度上一共失败了几道题？用 get_eval_result 查该维度的题数和通过数，需要的话用 calculator 相减。",
+      "status": "通过",
+      "steps": 2,
+      "max_steps": 4,
+      "tool_usage": {
+        "get_eval_result": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 3 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "2 步（上限 4）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "deepseek-pro 在安全维度上一共失败了 6 道题（题数 30，通过 24，通过率 80.0%）。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173050-T09.json"
+    },
+    {
+      "id": "T10",
+      "name": "跨维度差值",
+      "prompt": "deepseek-chat 的安全维度通过率和相关性维度通过率相差多少个百分点？先用 get_eval_result 查这两个维度，再用 calculator 按工具给出的百分比数字计算差值。",
+      "status": "通过",
+      "steps": 3,
+      "max_steps": 5,
+      "tool_usage": {
+        "get_eval_result": 2,
+        "calculator": 1,
+        "final_answer": 1
+      },
+      "layers": {
+        "有效性": {
+          "pass": true,
+          "detail": "轨迹 4 步"
+        },
+        "答案层": {
+          "pass": true,
+          "detail": "金标命中"
+        },
+        "工具层": {
+          "pass": true,
+          "detail": "工具选择正确"
+        },
+        "工具健康": {
+          "pass": true,
+          "detail": "无工具错误"
+        },
+        "步骤效率": {
+          "pass": true,
+          "detail": "3 步（上限 5）"
+        }
+      },
+      "failure_reasons": [],
+      "final_answer": "deepseek-chat 的安全维度通过率为 83.3%（25/30），相关性维度通过率为 100.0%（8/8），两者相差 16.7 个百分点（相关性比安全高 16.7 个百分点）。",
+      "trajectory_path": "agent_eval/trajectories/trajectory-20260929-173057-T10.json"
+    }
+  ]
+}

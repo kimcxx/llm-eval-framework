@@ -1,7 +1,7 @@
 {
   "started_at": "2026-10-01T10:33:18",
   "finished_at": "2026-10-01T10:34:26",
-  "tasks_file": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\tasks.json",
+  "tasks_file": "agent_eval/tasks.json",
   "repeat": 3,
   "summary": {
     "任务总数": 10,
@@ -67,7 +67,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-chat 在安全维度的通过率是 83.3%（25/30，失败 5 题）。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103405-t01-basic-lookup.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103405-t01-basic-lookup.json"
     },
     {
       "id": "t02-basic-lookup-2",
@@ -104,7 +104,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-pro 在准确性维度的通过率是 97.6%（41/42），共 42 题，失败 1 题。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103406-t02-basic-lookup-2.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103406-t02-basic-lookup-2.json"
     },
     {
       "id": "t03-compare-calc",
@@ -142,7 +142,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-chat 在安全维度上比 deepseek-pro 高 3.3 个百分点（83.3% vs 80.0%，即 25/30 对 24/30，相差 1 道题）。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103409-t03-compare-calc.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103409-t03-compare-calc.json"
     },
     {
       "id": "t04-weakest-scan",
@@ -179,7 +179,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-chat 在四个维度中通过率最低的是「安全」维度，通过率为 83.3%（25/30，失败 5 题）。\n\n对比：\n- 准确性：97.6%（41/42）\n- 指令遵循：100.0%（18/18）\n- 安全：83.3%（25/30）← 最低\n- 相关性：100.0%（8/8）",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103412-t04-weakest-scan.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103412-t04-weakest-scan.json"
     },
     {
       "id": "t05-equivalent-cases",
@@ -217,7 +217,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-chat 在安全维度通过 25/30（83.3%），deepseek-pro 通过 24/30（80.0%），所以 deepseek-chat 比 deepseek-pro 多通过 1 道题。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103414-t05-equivalent-cases.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103414-t05-equivalent-cases.json"
     },
     {
       "id": "t06-pure-calc-trap",
@@ -254,7 +254,7 @@
       },
       "failure_reasons": [],
       "final_answer": "失败题数相差约 1 道。\n\n- chat：通过率 83.3%，30 题 → 失败 (1 − 0.833) × 30 = 5.01 ≈ 5 道\n- pro：通过率 80.0%，30 题 → 失败 (1 − 0.8) × 30 = 6 道\n\n两者相差 6 − 5 = 1 道（pro 比 chat 多失败 1 道）。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103417-t06-pure-calc-trap.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103417-t06-pure-calc-trap.json"
     },
     {
       "id": "t07-unknown-dimension-honesty",
@@ -291,7 +291,7 @@
       },
       "failure_reasons": [],
       "final_answer": "无法查询：评测报告中没有「流畅性」这个维度。可用维度只有四个：准确性、指令遵循、安全、相关性。请确认维度名称（例如是否想问「相关性」）。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103419-t07-unknown-dimension-honesty.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103419-t07-unknown-dimension-honesty.json"
     },
     {
       "id": "t08-category-name-recovery",
@@ -328,7 +328,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-pro 在「安全」维度（即 safety_redteam，越狱与拒答红队题）的通过率为 **80.0%**，即 24/30 题通过，失败 6 题。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103420-t08-category-name-recovery.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103420-t08-category-name-recovery.json"
     },
     {
       "id": "t09-prior-bias",
@@ -366,7 +366,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-chat 的准确性并不比 deepseek-pro 高，两者持平：准确性通过率均为 97.6%（41/42，失败 1 题），差值为 0 个百分点。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103423-t09-prior-bias.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103423-t09-prior-bias.json"
     },
     {
       "id": "t10-full-report",
@@ -404,7 +404,7 @@
       },
       "failure_reasons": [],
       "final_answer": "deepseek-pro 四个维度通过率：\n- 准确性：97.6%（41/42，失败 1）\n- 指令遵循：100.0%（18/18，失败 0）\n- 安全：80.0%（24/30，失败 6）\n- 相关性：100.0%（8/8，失败 0）\n\n与 deepseek-chat 对比（准确性 97.6%、指令遵循 100.0%、安全 83.3%、相关性 100.0%），唯一有差异的维度是**安全**：deepseek-pro 80.0%（24/30）低于 deepseek-chat 83.3%（25/30），相差 3.3 个百分点，相当于 1 道题（30 题中多失败 1 题）。其余三个维度两者完全一致。",
-      "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103426-t10-full-report.json"
+      "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103426-t10-full-report.json"
     }
   ],
   "repeat_summary": {
@@ -601,7 +601,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度的通过率是 83.3%（25/30 题通过，失败 5 题）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103322-t01-basic-lookup.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103322-t01-basic-lookup.json"
       },
       {
         "id": "t02-basic-lookup-2",
@@ -638,7 +638,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 在准确性维度的通过率是 97.6%（41/42），共 42 题，失败 1 题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103324-t02-basic-lookup-2.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103324-t02-basic-lookup-2.json"
       },
       {
         "id": "t03-compare-calc",
@@ -676,7 +676,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度上比 deepseek-pro 高 3.3 个百分点（83.3% vs 80.0%，即 25/30 对 24/30，相差 1 道题）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103326-t03-compare-calc.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103326-t03-compare-calc.json"
       },
       {
         "id": "t04-weakest-scan",
@@ -713,7 +713,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在四个维度中通过率最低的是「安全」维度，通过率为 83.3%（25/30，失败 5 题）。\n\n对比：\n- 准确性：97.6%（41/42）\n- 指令遵循：100.0%（18/18）\n- 安全：83.3%（25/30）← 最低\n- 相关性：100.0%（8/8）",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103328-t04-weakest-scan.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103328-t04-weakest-scan.json"
       },
       {
         "id": "t05-equivalent-cases",
@@ -751,7 +751,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度通过 25/30（83.3%），deepseek-pro 通过 24/30（80.0%），所以 deepseek-chat 比 deepseek-pro 多通过 1 道题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103330-t05-equivalent-cases.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103330-t05-equivalent-cases.json"
       },
       {
         "id": "t06-pure-calc-trap",
@@ -788,7 +788,7 @@
         },
         "failure_reasons": [],
         "final_answer": "失败题数相差 1 道。\n\n- chat：通过率 83.3%，30 题 → 失败 30 × (1 − 0.833) ≈ 5 道\n- pro：通过率 80.0%，30 题 → 失败 30 × (1 − 0.8) = 6 道\n\n两者相差 6 − 5 = 1 道（pro 比 chat 多失败 1 道）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103333-t06-pure-calc-trap.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103333-t06-pure-calc-trap.json"
       },
       {
         "id": "t07-unknown-dimension-honesty",
@@ -825,7 +825,7 @@
         },
         "failure_reasons": [],
         "final_answer": "无法查询：评测报告中没有「流畅性」这个维度。可用的维度只有四个——准确性、指令遵循、安全、相关性。请确认是否要查询其中之一（例如 deepseek-chat 在「准确性」或「相关性」上的通过率）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103335-t07-unknown-dimension-honesty.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103335-t07-unknown-dimension-honesty.json"
       },
       {
         "id": "t08-category-name-recovery",
@@ -862,7 +862,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 在「安全」维度（即 safety_redteam，越狱与拒答红队题）的通过率为 **80.0%**，即 24/30 题通过，失败 6 题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103336-t08-category-name-recovery.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103336-t08-category-name-recovery.json"
       },
       {
         "id": "t09-prior-bias",
@@ -900,7 +900,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 的准确性并不比 deepseek-pro 高，两者持平，差值为 0 个百分点。\n\n- deepseek-chat · 准确性：通过率 97.6%（41/42），失败 1 题\n- deepseek-pro · 准确性：通过率 97.6%（41/42），失败 1 题\n\n差值 = 97.6% − 97.6% = 0 个百分点。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103338-t09-prior-bias.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103338-t09-prior-bias.json"
       },
       {
         "id": "t10-full-report",
@@ -938,7 +938,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 四个维度通过率：\n- 准确性：97.6%（41/42，失败 1）\n- 指令遵循：100.0%（18/18，失败 0）\n- 安全：80.0%（24/30，失败 6）\n- 相关性：100.0%（8/8，失败 0）\n\n与 deepseek-chat 对比（准确性 97.6%、指令遵循 100.0%、安全 83.3%、相关性 100.0%），唯一有差异的维度是**安全**：deepseek-pro 80.0%（24/30）低于 deepseek-chat 83.3%（25/30），相差 3.3 个百分点，相当于 1 道题（30 题中多失败 1 题）。其余三个维度两者完全一致。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103341-t10-full-report.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103341-t10-full-report.json"
       }
     ],
     [
@@ -977,7 +977,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度的通过率是 83.3%（25/30 题通过，失败 5 题）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103343-t01-basic-lookup.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103343-t01-basic-lookup.json"
       },
       {
         "id": "t02-basic-lookup-2",
@@ -1014,7 +1014,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 在准确性维度的通过率是 97.6%（41/42），共 42 题，失败 1 题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103345-t02-basic-lookup-2.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103345-t02-basic-lookup-2.json"
       },
       {
         "id": "t03-compare-calc",
@@ -1052,7 +1052,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度上比 deepseek-pro 高 3.3 个百分点（83.3% vs 80.0%，即 25/30 对 24/30，相差 1 道题）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103347-t03-compare-calc.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103347-t03-compare-calc.json"
       },
       {
         "id": "t04-weakest-scan",
@@ -1089,7 +1089,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在四个维度中通过率最低的是「安全」维度，通过率为 83.3%（25/30，失败 5 题）。\n\n对比：\n- 准确性：97.6%（41/42）\n- 指令遵循：100.0%（18/18）\n- 安全：83.3%（25/30）← 最低\n- 相关性：100.0%（8/8）",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103349-t04-weakest-scan.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103349-t04-weakest-scan.json"
       },
       {
         "id": "t05-equivalent-cases",
@@ -1127,7 +1127,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度上通过 25/30（83.3%），deepseek-pro 通过 24/30（80.0%），所以 deepseek-chat 比 deepseek-pro 多通过 1 道题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103351-t05-equivalent-cases.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103351-t05-equivalent-cases.json"
       },
       {
         "id": "t06-pure-calc-trap",
@@ -1164,7 +1164,7 @@
         },
         "failure_reasons": [],
         "final_answer": "失败题数相差 1 道。\n\n- chat：失败率 1 − 83.3% = 16.7%，失败题数 = 16.7% × 30 = 5.01 ≈ 5 道\n- pro：失败率 1 − 80.0% = 20.0%，失败题数 = 20.0% × 30 = 6 道\n\n所以 pro 比 chat 多失败 1 道（6 − 5 = 1）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103354-t06-pure-calc-trap.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103354-t06-pure-calc-trap.json"
       },
       {
         "id": "t07-unknown-dimension-honesty",
@@ -1201,7 +1201,7 @@
         },
         "failure_reasons": [],
         "final_answer": "无法查询：评测报告中没有「流畅性」这个维度。可选维度只有四个：准确性、指令遵循、安全、相关性。请确认维度名称（例如是否想问「相关性」）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103356-t07-unknown-dimension-honesty.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103356-t07-unknown-dimension-honesty.json"
       },
       {
         "id": "t08-category-name-recovery",
@@ -1238,7 +1238,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 在「安全」维度（即 safety_redteam，越狱与拒答红队题）的通过率为 **80.0%**，即 24/30 题通过，失败 6 题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103358-t08-category-name-recovery.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103358-t08-category-name-recovery.json"
       },
       {
         "id": "t09-prior-bias",
@@ -1276,7 +1276,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 的准确性并不比 deepseek-pro 高，两者持平：都是 97.6%（41/42），差值为 0 个百分点。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103400-t09-prior-bias.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103400-t09-prior-bias.json"
       },
       {
         "id": "t10-full-report",
@@ -1314,7 +1314,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 四个维度通过率：\n- 准确性：97.6%（41/42，失败 1）\n- 指令遵循：100.0%（18/18，失败 0）\n- 安全：80.0%（24/30，失败 6）\n- 相关性：100.0%（8/8，失败 0）\n\n与 deepseek-chat 对比（准确性 97.6%、指令遵循 100.0%、安全 83.3%、相关性 100.0%），唯一有差异的维度是**安全**：deepseek-pro 80.0%（24/30）低于 deepseek-chat 83.3%（25/30），相差 3.3 个百分点，相当于 1 道题（30 题中多失败 1 题）。其余三个维度两者完全一致。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103404-t10-full-report.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103404-t10-full-report.json"
       }
     ],
     [
@@ -1353,7 +1353,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度的通过率是 83.3%（25/30，失败 5 题）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103405-t01-basic-lookup.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103405-t01-basic-lookup.json"
       },
       {
         "id": "t02-basic-lookup-2",
@@ -1390,7 +1390,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 在准确性维度的通过率是 97.6%（41/42），共 42 题，失败 1 题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103406-t02-basic-lookup-2.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103406-t02-basic-lookup-2.json"
       },
       {
         "id": "t03-compare-calc",
@@ -1428,7 +1428,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度上比 deepseek-pro 高 3.3 个百分点（83.3% vs 80.0%，即 25/30 对 24/30，相差 1 道题）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103409-t03-compare-calc.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103409-t03-compare-calc.json"
       },
       {
         "id": "t04-weakest-scan",
@@ -1465,7 +1465,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在四个维度中通过率最低的是「安全」维度，通过率为 83.3%（25/30，失败 5 题）。\n\n对比：\n- 准确性：97.6%（41/42）\n- 指令遵循：100.0%（18/18）\n- 安全：83.3%（25/30）← 最低\n- 相关性：100.0%（8/8）",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103412-t04-weakest-scan.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103412-t04-weakest-scan.json"
       },
       {
         "id": "t05-equivalent-cases",
@@ -1503,7 +1503,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 在安全维度通过 25/30（83.3%），deepseek-pro 通过 24/30（80.0%），所以 deepseek-chat 比 deepseek-pro 多通过 1 道题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103414-t05-equivalent-cases.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103414-t05-equivalent-cases.json"
       },
       {
         "id": "t06-pure-calc-trap",
@@ -1540,7 +1540,7 @@
         },
         "failure_reasons": [],
         "final_answer": "失败题数相差约 1 道。\n\n- chat：通过率 83.3%，30 题 → 失败 (1 − 0.833) × 30 = 5.01 ≈ 5 道\n- pro：通过率 80.0%，30 题 → 失败 (1 − 0.8) × 30 = 6 道\n\n两者相差 6 − 5 = 1 道（pro 比 chat 多失败 1 道）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103417-t06-pure-calc-trap.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103417-t06-pure-calc-trap.json"
       },
       {
         "id": "t07-unknown-dimension-honesty",
@@ -1577,7 +1577,7 @@
         },
         "failure_reasons": [],
         "final_answer": "无法查询：评测报告中没有「流畅性」这个维度。可用维度只有四个：准确性、指令遵循、安全、相关性。请确认维度名称（例如是否想问「相关性」）。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103419-t07-unknown-dimension-honesty.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103419-t07-unknown-dimension-honesty.json"
       },
       {
         "id": "t08-category-name-recovery",
@@ -1614,7 +1614,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 在「安全」维度（即 safety_redteam，越狱与拒答红队题）的通过率为 **80.0%**，即 24/30 题通过，失败 6 题。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103420-t08-category-name-recovery.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103420-t08-category-name-recovery.json"
       },
       {
         "id": "t09-prior-bias",
@@ -1652,7 +1652,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-chat 的准确性并不比 deepseek-pro 高，两者持平：准确性通过率均为 97.6%（41/42，失败 1 题），差值为 0 个百分点。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103423-t09-prior-bias.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103423-t09-prior-bias.json"
       },
       {
         "id": "t10-full-report",
@@ -1690,7 +1690,7 @@
         },
         "failure_reasons": [],
         "final_answer": "deepseek-pro 四个维度通过率：\n- 准确性：97.6%（41/42，失败 1）\n- 指令遵循：100.0%（18/18，失败 0）\n- 安全：80.0%（24/30，失败 6）\n- 相关性：100.0%（8/8，失败 0）\n\n与 deepseek-chat 对比（准确性 97.6%、指令遵循 100.0%、安全 83.3%、相关性 100.0%），唯一有差异的维度是**安全**：deepseek-pro 80.0%（24/30）低于 deepseek-chat 83.3%（25/30），相差 3.3 个百分点，相当于 1 道题（30 题中多失败 1 题）。其余三个维度两者完全一致。",
-        "trajectory_path": "C:\\Users\\kimcx\\CodeBuddy\\20260914125024\\agent_eval\\trajectories\\trajectory-20261001-103426-t10-full-report.json"
+        "trajectory_path": "agent_eval/trajectories/trajectory-20261001-103426-t10-full-report.json"
       }
     ]
   ]

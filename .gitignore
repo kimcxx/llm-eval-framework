@@ -31,9 +31,12 @@ dashboard/dist/
 # ---- Agent 评测运行产物（agent_eval/）----
 # 轨迹：每题每遍一份、含完整模型输入输出，体积大且每次跑都新增，不入库。
 agent_eval/trajectories/
-# HTML 报告：make_report.py 的生成物，类比 dashboard/dist/，不入库。
+# HTML 报告：make_report.py 的生成物，类比 dashboard/dist/，默认不入库；
+# 只留一份样例（repeat=3 那次）在仓库里，让人不跑也能看到报告长什么样。
 agent_eval/reports/*.html
-# 结果：只留「当前那份正式结果」入库（见 agent_eval/results/README.md），
-# 历史正式结果与 INVALID 作废存档本地留存即可。
+!agent_eval/reports/agent-eval-20261001-115744.html
+# 结果：正式结果与 INVALID 作废存档都入库（INVALID 是事故留档＝治理证据），
+# 只有 results/archive/ 的历史正式结果不入库——它们随时能重跑，且会被
+# run_eval.py 自动往里堆，进库只会无限膨胀。
+# 详见 agent_eval/results/README.md
 agent_eval/results/archive/
-agent_eval/results/result-INVALID-*.json
