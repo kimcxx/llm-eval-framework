@@ -191,6 +191,18 @@ def print_trajectory_summary(logs: list[dict[str, Any]], final_answer: str) -> d
     return usage
 
 
+def rel_or_abs(path: Path) -> str:
+    """尽量输出相对项目根目录的路径（正斜杠），拿不到就退回绝对路径。
+
+    结果 JSON 是要进仓库归档的：落绝对路径等于把本机用户名一起写进去，跨平台
+    也读不懂。宁可退回绝对路径，也不写空值——空值会让人误判「没记来源」。
+    """
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except (ValueError, OSError):
+        return str(path)
+
+
 def dump_trajectory(
     task: str,
     logs: list[dict[str, Any]],
@@ -240,6 +252,6 @@ def run_agent_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, tag: str = "")
         "final_answer": final_answer,
         "logs": logs,
         "usage": usage,
-        "trajectory_path": str(path),
+        "trajectory_path": rel_or_abs(path),
         "steps": len(logs),
     }

@@ -28,7 +28,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from agent_eval.common import observations_of, run_agent_task  # noqa: E402
+from agent_eval.common import (  # noqa: E402
+    observations_of,
+    rel_or_abs,
+    run_agent_task,
+)
 
 TASKS_FILE = Path(__file__).resolve().parent / "tasks.json"
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -360,14 +364,6 @@ def dry_run(tasks: list[dict[str, Any]]) -> int:
     return 0
 
 
-def _rel_or_abs(path: Path) -> str:
-    """尽量输出相对项目根目录的路径（带正斜杠），失败就退回绝对路径。"""
-    try:
-        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
-    except (ValueError, OSError):
-        return str(path)
-
-
 def _archive_previous(current: Path) -> list[str]:
     """把 results/ 里更早的正式结果挪进 results/archive/。
 
@@ -436,7 +432,7 @@ def main() -> int:
         # 相对路径：结果 JSON 是要进仓库归档的，落绝对路径会把本机用户名
         # 一起写进去（跨平台也看不懂）。拿不到相对路径就退回绝对路径，
         # 宁可多一个绝对路径，也不写空值让人误判「没记题集来源」。
-        "tasks_file": _rel_or_abs(TASKS_FILE),
+        "tasks_file": rel_or_abs(TASKS_FILE),
         "repeat": repeat,
         "summary": summary,
         "results": rows,
