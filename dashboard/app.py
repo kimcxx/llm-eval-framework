@@ -22,6 +22,18 @@ if not REPORTS_DIR.is_dir():
     REPORTS_DIR = ROOT / "reports"
 PORT = int(os.environ.get("PORT", "8080"))
 
+# Agent 评测（agent_eval/）的数据位置——只读，不写、不改。
+# 之所以另外扫一份目录而不是并进 reports/：评测报告的「通过率」是模型答对率，
+# Agent 评测的「通过率」是 agent 有没有调对工具，两个通过率混进一张表会互相污染。
+AGENT_EVAL_DIR = ROOT / "agent_eval"
+AGENT_RESULTS_DIR = AGENT_EVAL_DIR / "results"
+AGENT_ARCHIVE_DIR = AGENT_RESULTS_DIR / "archive"
+AGENT_REPORTS_DIR = AGENT_EVAL_DIR / "reports"
+# 文件名里带这个标记的是作废存档（见 agent_eval/results/README.md）：
+# 它是事故留档，可以在仓库里查，但**绝不能出现在看板上**——显示了就等于
+# 把「通过了自己出的题」的成绩又摆出来一遍。
+AGENT_INVALID_MARK = "-INVALID-"
+
 # ============================== 模块顶层 helper（供 tester 单测 / Python 调用） ============================== #
 
 
@@ -1049,6 +1061,90 @@ function renderBanner(data) {
     </div>`;
 }
 
+// ---------- Agent 评测板块 ---------- //
+// 数据源与评测报告完全分开：这里读的是 agent_eval/results/ 下的 result-*.json，
+// 「通过率」的含义是「agent 有没有调对工具/答对题」，不是模型的答对率——
+// 两个数并在一张表里会互相污染口径，所以单列一块。
+// INVALID 作废存档由后端直接过滤掉（带 -INVALID- 的结果不返回），前端不再判一次。
+function agentReportLink(r) {
+  if (!r || !r.report) return '<span class="catname">—</span>';
+  const tip = r.report_exact
+    ? '与本次结果时间戳完全对应的 HTML 报告'
+    : '未找到时间戳完全对应的报告，取本次结果之后生成的最新一份';
+  return `<a class="back" style="margin:0" title="${esc(tip)}" href="api/agent/report/${encodeURIComponent(r.report)}" target="_blank" rel="noopener">HTML 报告 →</a>`;
+}
+
+function agentRepeatCard(latest) {
+  const rs = latest && latest.repeat_summary;
+  if (!rs) return '';
+  const rows = rs.逐题 || [];
+  if (!rows.length) return '';
+  return `
+    <div style="margin-top:14px">
+      <div style="font-weight:600;margin-bottom:4px">逐题一致性（${rs.遍数} 遍）</div>
+      <div class="hint">同一任务集跑 ${rs.遍数} 遍，逐题比对各遍状态与步数：状态一致 = 这题没抖。
+        状态一致 <b>${esc(rs.状态一致题数)}</b>${rs.全部一致 ? ' <span class="badge pass">全部一致</span>' : ' <span class="badge warn">存在抖动题</span>'}</div>
+      <table>
+        <tr><th>任务</th><th>各遍状态</th><th>各遍步数</th><th>一致性</th></tr>
+        ${rows.map(t => `
+          <tr>
+            <td class="mono">${esc(t.id)}</td>
+            <td>${(t.各遍状态 || []).map(s => `<span class="badge ${s === '通过' ? 'pass' : 'fail'}" style="margin-right:4px">${esc(s)}</span>`).join('')}</td>
+            <td class="catname">${esc((t.各遍步数 || []).join(' / '))}</td>
+            <td>${t.状态一致 ? '<span class="badge pass">一致</span>' : '<span class="badge warn">抖动</span>'}</td>
+          </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+function agentCardHtml(a) {
+  const runs = (a && a.runs) || [];
+  const head = `<div style="font-weight:600;margin-bottom:4px">Agent 评测</div>`;
+  if (!runs.length) {
+    return `<div class="card">${head}
+      <div class="sub" style="margin:0">暂无结果。数据源：<code>agent_eval/results/</code> 与
+        <code>results/archive/</code> 下的 <code>result-*.json</code>；带
+        <code>-INVALID-</code> 的作废存档不显示。</div></div>`;
+  }
+  const latest = a.latest || runs[0];
+  const holdBadge = latest.trap_hold
+    ? '<span class="badge pass">守住</span>'
+    : (latest.trap_hold === false ? '<span class="badge fail">未守住</span>' : '<span class="catname">—</span>');
+  const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
+      <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
+
+  return `
+    <div class="card">
+      ${head}
+      <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+        · ${esc(latest.file)}${latest.report ? ` · ${agentReportLink(latest)}` : ''}</div>
+      <div class="grid" style="margin-bottom:4px">
+        ${statHtml('任务成功率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过</div>`, rateColor(latest.pass_rate || 0))}
+        ${statHtml('工具选择正确率', pct(latest.tool_rate || 0), rateColor(latest.tool_rate || 0))}
+        ${statHtml('平均步数', esc(latest.avg_steps ?? '—'))}
+        ${statHtml('陷阱题防线', holdBadge)}
+      </div>
+      ${agentRepeatCard(latest)}
+      <div style="font-weight:600;margin:16px 0 4px">历史结果</div>
+      <table>
+        <tr><th>时间</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
+        ${runs.map(r => `
+          <tr>
+            <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
+            ${rateCell(r.pass_rate || 0)}
+            <td><span class="badge">${esc(r.repeat)} 遍</span></td>
+            <td>${Number(r.failed || 0) === 0 && Number(r.invalid || 0) === 0
+                ? `<span class="badge pass">全通过</span>`
+                : `<span class="badge fail">${esc(r.failed ?? 0)} 失败${Number(r.invalid || 0) ? ` · ${esc(r.invalid)} 无效` : ''}</span>`}
+              <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
+            <td>${agentReportLink(r)}</td>
+          </tr>`).join('')}
+      </table>
+      <div class="hint" style="padding:10px 12px 0">带 <code>-INVALID-</code> 的作废存档不进看板；
+        报告链接按时间戳配对（精确匹配优先，配不上取该结果之后生成的最新一份），配不上显示「—」。</div>
+    </div>`;
+}
+
 // 渲染报告列表（首页）
 async function renderList(reports) {
   const tests = await (await fetch('api/tests.json')).json();
@@ -1063,7 +1159,11 @@ async function renderList(reports) {
     ? reports[0].model_rows.map(x => listRate(reports[0], x))
     : [topRate];
   // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
-  const bannerData = await computeBannerData(reports);
+  // Agent 评测板块同源：拉不到就显示空状态，不能让首页一起挂掉
+  const [bannerData, agent] = await Promise.all([
+    computeBannerData(reports),
+    fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null),
+  ]);
   $app.innerHTML = `
     ${bannerData ? renderBanner(bannerData) : ''}
     <h1>LLM 评测报告看板</h1>
@@ -1098,6 +1198,7 @@ async function renderList(reports) {
       </details>` : ''}
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
+    ${agentCardHtml(agent)}
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>${hasStability ? '稳定率 / 通过率' : '通过率'}</th><th>P95 延迟</th></tr>
       ${reports.map((r, i) => {
@@ -1927,6 +2028,104 @@ def _load_tests_summary():
         return None
 
 
+def _agent_stamp(name: str):
+    """从 result-20261001-103426.json / agent-eval-20261001-103426.html 里取时间戳。"""
+    m = re.search(r"\d{8}-\d{6}", str(name))
+    return m.group(0) if m else None
+
+
+def _agent_entry(path: Path, archived: bool):
+    """读一份 Agent 评测结果，归一化成看板要的字段；读不动返回 None（跳过）。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    summary = data.get("summary") or {}
+    repeat = int(data.get("repeat") or 1)
+    entry = {
+        "file": path.name,
+        "archived": archived,
+        "stamp": _agent_stamp(path.name),
+        "time": _agent_stamp(path.name) or data.get("finished_at") or data.get("started_at") or "?",
+        "repeat": repeat,
+        "total": summary.get("任务总数"),
+        "passed": summary.get("通过"),
+        "failed": summary.get("失败"),
+        "invalid": summary.get("无效"),
+        "pass_rate": summary.get("任务成功率"),
+        "tool_rate": summary.get("工具选择正确率"),
+        "avg_steps": summary.get("平均步数"),
+        "trap_hold": summary.get("幻觉题是否守住"),
+        "traps": summary.get("幻觉题") or [],
+        "report": None,        # agent_eval/reports/ 里配上的 HTML 报告（配不上为 None）
+        "report_exact": False,  # 时间戳是否精确匹配（False = 取该结果之后生成的最新一份）
+    }
+    # 逐题一致性只有 repeat>1 才有；单遍结果没有可比的对象，不塞空数组误导
+    rs = data.get("repeat_summary")
+    if repeat > 1 and isinstance(rs, dict):
+        entry["repeat_summary"] = rs
+    return entry
+
+
+def _pair_agent_reports(runs: list):
+    """把 agent_eval/reports/ 里的 HTML 报告配到结果行上（就地改 runs）。
+
+    两级配对：
+    1. **时间戳完全相同**（`result-20261001-103426.json` ↔ `agent-eval-20261001-103426.html`）
+    2. 配不上时，取「该结果之后生成的最新一份报告」——报告总是在结果之后生成的。
+       一份报告只认一份结果（认最近的那次），避免多行指向同一份报告。
+
+    配不上就留空、前端显示「—」：宁可少一个链接，也不要链到一份不是这次的报告。
+    """
+    if not AGENT_REPORTS_DIR.is_dir():
+        return
+    reports = sorted(AGENT_REPORTS_DIR.glob("agent-eval-*.html"), key=lambda p: p.name, reverse=True)
+    claimed = set()
+    for rep in reports:
+        rep_stamp = _agent_stamp(rep.name)
+        if not rep_stamp:
+            continue
+        candidates = [
+            r for r in runs
+            if (r.get("stamp") or "") <= rep_stamp and r["file"] not in claimed
+        ]
+        if not candidates:
+            continue
+        # runs 已按时间倒序：exact 优先，其次取时间戳不晚于报告的最新一份
+        exact = [r for r in candidates if r.get("stamp") == rep_stamp]
+        target = (exact or candidates)[0]
+        target["report"] = rep.name
+        target["report_exact"] = bool(exact)
+        claimed.add(target["file"])
+
+
+def load_agent_runs() -> list:
+    """扫描 agent_eval/results/（含 archive/）下的 result-*.json，按时间倒序。
+
+    **INVALID 一律不返回**：那是作废存档，进看板就是误导（详见 agent_eval/results/README.md）。
+    目录不存在（如部署沙盒里没有 agent_eval/）返回空列表，看板显示空状态而不是崩。
+    """
+    if not AGENT_RESULTS_DIR.is_dir():
+        return []
+    paths = [(p, False) for p in AGENT_RESULTS_DIR.glob("result-*.json")]
+    if AGENT_ARCHIVE_DIR.is_dir():
+        paths += [(p, True) for p in AGENT_ARCHIVE_DIR.glob("result-*.json")]
+
+    runs = []
+    for path, archived in paths:
+        if AGENT_INVALID_MARK in path.name:
+            continue
+        entry = _agent_entry(path, archived)
+        if entry:
+            runs.append(entry)
+    runs.sort(key=lambda x: _time_key(x["time"]), reverse=True)
+    _pair_agent_reports(runs)
+    return runs
+
+
 def _load_tests_detail():
     """读取 pytest 用例明细（dashboard/data/tests-detail.json）。
 
@@ -1971,6 +2170,27 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(_load_tests_summary() or {})
         elif path in ("/api/tests/detail", "/api/tests/detail.json", "/api/tests-detail.json"):
             self._json(_load_tests_detail() or {})
+        elif path in ("/api/agent", "/api/agent.json"):
+            runs = load_agent_runs()
+            self._json({"latest": runs[0] if runs else None, "runs": runs})
+        elif path.startswith("/api/agent/report/"):
+            # Agent 评测的 HTML 报告：走 API 而不是直接链 agent_eval/ 下的文件，
+            # 这样动态服务与静态导出（build_static 会把它写进 dist/api/agent/report/）
+            # 用的是同一个相对地址，静态托管下也不会变成死链。
+            name = os.path.basename(path[len("/api/agent/report/"):])
+            fp = AGENT_REPORTS_DIR / name
+            if fp.suffix == ".html" and fp.is_file():
+                try:
+                    body = fp.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+            else:
+                self._json({"error": "not found"}, 404)
         elif path.startswith("/api/report/"):
             name = os.path.basename(path[len("/api/report/"):])
             fp = REPORTS_DIR / name
