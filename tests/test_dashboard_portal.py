@@ -45,7 +45,44 @@ class TestPortalCards:
         assert "repeat(auto-fit, minmax(320px, 1fr))" in css
 
 
-class TestRouting:
+class TestPortalCardContent:
+    """卡片 v2：三段式（被测对象 / 怎么测 / 最新成绩），去掉序号与孤立「进入 →」。"""
+
+    def test_no_serial_number_and_no_bare_enter(self) -> None:
+        assert "①" not in app.PAGE and "②" not in app.PAGE, "卡片不该带 ①② 序号"
+        assert "进入 →" not in app.PAGE, "孤立的「进入 →」不知所云，已统一为「查看 XX 详情 →」"
+
+    def test_cards_end_with_detail_links(self) -> None:
+        assert "查看模型层详情 →" in app.PAGE
+        assert "查看 Agent 层详情 →" in app.PAGE
+
+    def test_three_sections_per_card(self) -> None:
+        """三段是运行时拼的，源码里表现为 sec('被测对象'...) 这样的调用。"""
+        # 每张卡一段；「最新成绩」有「有数据 / 空态」两个分支，所以出现 4 次
+        for label in ("被测对象", "怎么测", "最新成绩"):
+            assert app.PAGE.count(f"sec('{label}'") >= 2, f"{label} 段应在两张卡上都出现"
+
+    def test_intro_names_the_subjects(self) -> None:
+        """简介必须点名：deepseek-chat / deepseek-pro / smolagents CodeAgent。"""
+        for name in ("deepseek-chat", "deepseek-pro", "smolagents CodeAgent"):
+            assert name in app.PAGE, f"简介段缺少被测对象名：{name}"
+
+
+class TestScoringSource:
+    """模型层成绩来源：跳过 mock-only 报告（CD 冒烟的假模型不能当成绩）。"""
+
+    def test_scoring_report_skips_mock(self) -> None:
+        assert "function pickScoringReport(reports)" in app.PAGE
+        body = app.PAGE[app.PAGE.index("function pickScoringReport"):]
+        body = body[:body.index("\n}")]
+        assert "isMockModel" in body, "选成绩报告时必须排除 mock-* 对照组"
+
+    def test_score_rows_filter_mock(self) -> None:
+        body = app.PAGE[app.PAGE.index("async function renderPortal"):]
+        body = body[:body.index("$app.innerHTML")]
+        assert "!isMockModel(x.model)" in body, "成绩里的模型行必须过滤掉 mock-*"
+
+
     """路由：空 hash → 门户，#llm → 老首页，#agent → Agent 页。"""
 
     def test_empty_hash_renders_portal(self) -> None:

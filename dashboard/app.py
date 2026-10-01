@@ -705,7 +705,14 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .pcard:hover { border-color: var(--accent); transform: translateY(-2px); }
   .ptitle { font-size: 17px; font-weight: 600; }
   .psub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  /* 卡片三段式：被测对象 / 怎么测 / 最新成绩 */
+  .psec { margin-top: 10px; font-size: 13px; line-height: 1.7; }
+  .plabel { display: inline-block; min-width: 62px; color: var(--muted); font-size: 12px; }
+  .pchip { display: inline-block; background: var(--panel2); border: 1px solid var(--border);
+           border-radius: 8px; padding: 2px 8px; margin: 0 4px 4px 0; }
+  .pwhen { color: var(--muted); font-size: 12px; margin-left: 6px; }
   .pgo { color: var(--accent); font-size: 13px; margin-top: 14px; }
+  .pfoot { color: var(--muted); font-size: 12px; margin-top: 14px; text-align: center; }
 
   /* 标签页导航 */
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
@@ -1159,72 +1166,75 @@ async function renderAgent() {
       <code>python agent_eval/run_eval.py</code> 生成 <code>agent_eval/results/result-*.json</code>。</div></div>`}`;
 }
 
-// 门户页（空 hash）：两层评测各一张入口卡，等大并排，各带「最新成绩」摘要。
-// 这一页只负责导航和一眼看完，模型层细节在 #llm，Agent 层细节在 #agent。
+// 一份报告里参与「成绩」的模型行：横向报告取 model_rows，单模型报告取 model 一个。
+const modelsOf = r => (isMultiModel(r) ? r.model_rows : [{ model: r.model }]).filter(x => x && x.model);
+// 时间戳 20260923-143903 → 2026-09-23 14:39（门户上要给访问者看日期）
+const fmtTime = t => (t && String(t).length >= 13)
+  ? `${String(t).slice(0,4)}-${String(t).slice(4,6)}-${String(t).slice(6,8)} ${String(t).slice(9,11)}:${String(t).slice(11,13)}`
+  : (t || '—');
+
+// 门户成绩取哪份报告：**从最新往回找第一份含真实模型（非 mock-*）的报告**。
+// CD 冒烟报告只有 mock-baseline（管道自检的假模型），拿它当成绩会把「mock 基线」
+// 显示成实验室的结论——那是给访问者看的第一屏，误导最严重。mock-only 的报告
+// 只计入「共 N 份报告」，不进成绩。
+function pickScoringReport(reports) {
+  return (reports || []).find(r => modelsOf(r).some(x => !isMockModel(x.model))) || null;
+}
+
+// 门户页（空 hash）：两层评测各一张入口卡，等大并排。
+// 每张卡三段式：被测对象 / 怎么测 / 最新成绩——访问者一眼看明白测的是谁、怎么测、结果如何。
 async function renderPortal(reports) {
   const agent = await fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
-  const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
-      <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
+  const sec = (label, body) => `<div class="psec"><span class="plabel">${esc(label)}</span>${body}</div>`;
 
-  // ①模型层：横向报告一份文件含多个模型，通过率要按模型取范围（与 #llm 顶部卡片同口径）
-  const latest = reports[0] || null;
-  const multi = latest && isMultiModel(latest);
-  const rates = multi ? latest.model_rows.map(x => listRate(latest, x))
-    : (latest ? [listRate(latest, latest)] : []);
-  // 对比模型数：全部报告去重后的**真实**模型数。mock-* 是管道基线不是被测对象
-  // （口径与详情页矩阵一致），不算进来。之前只看最新一份报告——单模型回归报告
-  // 会把「1」顶到门户上，让人以为实验室只对比过一个模型。
-  const realModels = new Set();
-  for (const r of reports) {
-    for (const x of (isMultiModel(r) ? r.model_rows : [{ model: r.model }])) {
-      if (x && x.model && !isMockModel(x.model)) realModels.add(x.model);
-    }
-  }
-  const modelCount = realModels.size;
-  const llmSummary = latest ? `
-      <div class="grid" style="margin-top:12px">
-        ${statHtml(`最新${isStability(latest) ? '稳定率' : '通过率'}`,
-          rates.length > 1 ? `${pct(Math.min(...rates))} ~ ${pct(Math.max(...rates))}` : pct(rates[0] || 0),
-          rateColor(rates.length ? rates[0] : 0))}
-        ${statHtml('对比模型数', modelCount)}
-        ${statHtml('报告数', reports.length)}
-      </div>`
-    : `<div class="sub" style="margin:12px 0 0">暂无报告。先跑一次模型层评测。</div>`;
+  // 模型层：成绩来自「第一份含真实模型的报告」，逐真实模型给通过率 + 报告日期
+  const scoring = pickScoringReport(reports);
+  const realRows = scoring ? modelsOf(scoring).filter(x => !isMockModel(x.model)) : [];
+  const realNames = realRows.map(x => x.model);
+  const llmScore = scoring ? `
+      ${sec('最新成绩', realRows.map(x =>
+        `<span class="pchip">${esc(x.model)} <b class="rate" style="color:${rateColor(listRate(scoring, x))}">${pct(listRate(scoring, x))}</b></span>`
+      ).join(' ') + `<span class="pwhen">${esc(fmtTime(scoring.time))} · 共 ${reports.length} 份报告</span>`)}`
+    : sec('最新成绩', `<span class="pwhen">暂无含真实模型的报告</span>`);
+  const llmCard = `
+      <div class="ptitle">模型层评测</div>
+      ${sec('被测对象', realNames.length
+        ? realNames.map(n => `<b>${esc(n)}</b>`).join(' vs ')
+        : '<span class="pwhen">（暂无真实模型数据）</span>')}
+      ${sec('怎么测', '同一用例集横向对比 · 接入 CI 回归门禁')}
+      ${llmScore}`;
 
-  // ②Agent 层：成功率 + repeat 一致性 + 历史次数，口径同 #agent 页
+  // Agent 层：被测对象/怎么测/最新成绩，口径同 #agent 页
   const aLatest = (agent && agent.latest) || null;
-  const aRuns = (agent && agent.runs) || [];
   const aRs = aLatest && aLatest.repeat_summary;
-  const agentSummary = aLatest ? `
-      <div class="grid" style="margin-top:12px">
-        ${statHtml('任务成功率', `${pct(aLatest.pass_rate || 0)}<div class="k">${aLatest.passed ?? 0} / ${aLatest.total ?? 0} 通过</div>`, rateColor(aLatest.pass_rate || 0))}
-        ${statHtml('工具选择正确率', pct(aLatest.tool_rate || 0), rateColor(aLatest.tool_rate || 0))}
-        ${statHtml('累计评测', `${aRuns.length}<div class="k">次</div>`)}
-      </div>
-      ${aRs ? `<div class="sub" style="margin:8px 0 0">repeat ${esc(aRs.遍数)} 遍一致性：状态一致
-        <b>${esc(aRs.状态一致题数)}</b> / ${esc(aLatest.total ?? 0)} 题
-        ${aRs.全部一致 ? '<span class="badge pass">全部一致</span>' : '<span class="badge warn">存在抖动题</span>'}</div>` : ''}`
-    : `<div class="sub" style="margin:12px 0 0">暂无结果。先跑
-        <code>python agent_eval/run_eval.py</code>。</div>`;
+  const trapCount = (aLatest && Array.isArray(aLatest.traps)) ? aLatest.traps.length : 4;
+  const agentCard = `
+      <div class="ptitle">Agent 层评测</div>
+      ${sec('被测对象', '一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents CodeAgent</b>')}
+      ${sec('怎么测', `${esc(aLatest ? aLatest.total : 10)} 道任务含 ${esc(trapCount)} 道陷阱 · 四层断言 · repeat=${esc(aLatest ? aLatest.repeat : 3)}`)}
+      ${aLatest ? sec('最新成绩', `
+        <span class="pchip">任务 <b class="rate" style="color:${rateColor(aLatest.pass_rate || 0)}">${esc(aLatest.passed ?? 0)}/${esc(aLatest.total ?? 0)}</b></span>
+        <span class="pchip">工具选择 <b class="rate" style="color:${rateColor(aLatest.tool_rate || 0)}">${pct(aLatest.tool_rate || 0)}</b></span>
+        ${aRs ? `<span class="badge ${aRs.全部一致 ? 'pass' : 'warn'}">repeat ${esc(aRs.遍数)} 遍${aRs.全部一致 ? '全部一致' : '存在抖动'}</span>` : ''}
+        <span class="pwhen">${esc(fmtTime(aLatest.time))}</span>`)
+      : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
 
   $app.innerHTML = `
     <h1>LLM &amp; Agent 评测实验室</h1>
-    <div class="sub">两层评测：<b>模型层</b>比能力——同一用例集横向对比多个大模型；
-      <b>Agent 层</b>考执行——固定工具集下，agent 有没有调对工具、答对题。</div>
+    <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
+      Agent 层：一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents CodeAgent</b>，
+      10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
     <div class="portal">
       <a class="pcard" href="#llm">
-        <div class="ptitle">① 模型层评测</div>
-        <div class="psub">同一用例集横向对比多个大模型</div>
-        ${llmSummary}
-        <div class="pgo">进入 →</div>
+        ${llmCard}
+        <div class="pgo">查看模型层详情 →</div>
       </a>
       <a class="pcard" href="#agent">
-        <div class="ptitle">② Agent 层评测</div>
-        <div class="psub">${esc(aLatest && aLatest.total ? aLatest.total : 10)} 题含 4 道陷阱 · 四层断言归因</div>
-        ${agentSummary}
-        <div class="pgo">进入 →</div>
+        ${agentCard}
+        <div class="pgo">查看 Agent 层详情 →</div>
       </a>
-    </div>`;
+    </div>
+    <div class="pfoot">数据由 CI 回归与本地评测自动更新。</div>`;
 }
 
 // 渲染报告列表（#llm，原首页）
