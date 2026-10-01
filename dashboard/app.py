@@ -1134,6 +1134,7 @@ async function renderAgent() {
     ${latest ? `
     <div class="card">
       <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+        · 大脑 <b>${esc(latest.brain || 'deepseek-chat')}</b>
         · ${esc(latest.file)}${latest.report ? ` · ${agentReportLink(latest)}` : ''}</div>
       <div class="grid" style="margin-bottom:4px">
         ${statHtml('任务成功率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过</div>`, rateColor(latest.pass_rate || 0))}
@@ -1146,10 +1147,11 @@ async function renderAgent() {
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
       <table>
-        <tr><th>时间</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
+        <tr><th>时间</th><th>大脑</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
         ${runs.map(r => `
           <tr>
             <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
+            <td><span class="badge">${esc(r.brain || 'deepseek-chat')}</span></td>
             ${rateCell(r.pass_rate || 0)}
             <td><span class="badge">${esc(r.repeat)} 遍</span></td>
             <td>${Number(r.failed || 0) === 0 && Number(r.invalid || 0) === 0
@@ -1157,9 +1159,11 @@ async function renderAgent() {
                 : `<span class="badge fail">${esc(r.failed ?? 0)} 失败${Number(r.invalid || 0) ? ` · ${esc(r.invalid)} 无效` : ''}</span>`}
               <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
             <td>${agentReportLink(r)}</td>
-          </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="6" class="empty">暂无结果</td></tr>`}
       </table>
-      <div class="hint" style="padding:10px 12px 0">带 <code>-INVALID-</code> 的作废存档不进看板；
+      <div class="hint" style="padding:10px 12px 0">「大脑」= 这次驱动 agent 的模型（<code>--model</code>），
+        不同大脑的成绩各占一行、不合并：同一个 agent 换脑子跑出来的才是可比对比。
+        带 <code>-INVALID-</code> 的作废存档不进看板；
         报告链接按时间戳配对（精确匹配优先，配不上取该结果之后生成的最新一份），配不上显示「—」。</div>
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">暂无结果。先跑
@@ -2141,6 +2145,10 @@ def _agent_entry(path: Path, archived: bool):
         "file": path.name,
         "archived": archived,
         "stamp": _agent_stamp(path.name),
+        # 这次用的是哪个大脑（models.yaml 的引用名）。老结果没有 model 字段
+        # （那时只有一个大脑），按缺省 deepseek-chat 补齐——不能让「换了脑子」
+        # 和「没换脑子」的成绩在同一行里混着看。
+        "brain": str(data.get("model") or "deepseek-chat"),
         "time": _agent_stamp(path.name) or data.get("finished_at") or data.get("started_at") or "?",
         "repeat": repeat,
         "total": summary.get("任务总数"),

@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent_eval.common import (  # noqa: E402
+    AGENT_MODEL_NAME,
     observations_of,
     rel_or_abs,
     run_agent_task,
@@ -209,14 +210,16 @@ def _check_efficiency(logs: list[dict[str, Any]], task: dict[str, Any]) -> tuple
     return True, f"{used} 步（上限 {limit}）"
 
 
-def evaluate_task(task: dict[str, Any], index: int, total: int) -> dict[str, Any]:
+def evaluate_task(
+    task: dict[str, Any], index: int, total: int, model_name: str = AGENT_MODEL_NAME
+) -> dict[str, Any]:
     task_id = task.get("id") or f"#{index}"
     level = task.get("level", "")
     print(f"\n[{index}/{total}] {task_id}  [{level}]")
     print(f"  任务：{str(task.get('task', ''))[:80]}…")
 
     budget = expect_of(task)["max_steps"] + STEP_HEADROOM
-    run = run_agent_task(task["task"], max_steps=budget, tag=str(task_id))
+    run = run_agent_task(task["task"], max_steps=budget, tag=str(task_id), model_name=model_name)
     logs: list[dict[str, Any]] = run["logs"]
     usage: dict[str, int] = run["usage"]
     final_answer: str = run["final_answer"]
@@ -281,6 +284,24 @@ def _parse_repeat() -> int:
                 raise SystemExit(f"[用法错误] --repeat 至少为 1，收到：{n}")
             return n
     return 1
+
+
+def _parse_model() -> str:
+    """--model <名字>：换大脑（configs/models.yaml 里的引用名）。
+
+    不传时返回默认大脑，行为与加这个开关之前一模一样。换大脑是为了回答
+    「同一个 agent、同一套题，换个脑子差多少」——所以任务集和判据必须
+    完全不动（tasks.json 是红线），差的只能是大脑。
+    """
+    for i, arg in enumerate(sys.argv):
+        if arg == "--model":
+            if i + 1 >= len(sys.argv):
+                raise SystemExit("[用法错误] --model 后面要跟模型名，例如 --model deepseek-pro")
+            name = sys.argv[i + 1].strip()
+            if not name or name.startswith("--"):
+                raise SystemExit(f"[用法错误] --model 的模型名无效：{sys.argv[i + 1]}")
+            return name
+    return AGENT_MODEL_NAME
 
 
 def summarize_repeats(all_repeats: list[list[dict[str, Any]]]) -> dict[str, Any]:
@@ -388,8 +409,9 @@ def main() -> int:
         return dry_run(tasks)
 
     repeat = _parse_repeat()
+    model_name = _parse_model()
     started = datetime.now()
-    print(f"[评测] 共 {len(tasks)} 题，每题新建 agent，repeat={repeat}")
+    print(f"[评测] 共 {len(tasks)} 题，每题新建 agent，repeat={repeat}，大脑={model_name}")
 
     all_repeats: list[list[dict[str, Any]]] = []
     for r in range(1, repeat + 1):
@@ -398,7 +420,7 @@ def main() -> int:
         rows_r: list[dict[str, Any]] = []
         for index, task in enumerate(tasks, 1):
             try:
-                rows_r.append(evaluate_task(task, index, len(tasks)))
+                rows_r.append(evaluate_task(task, index, len(tasks), model_name))
             except Exception as exc:  # 单题炸了不能带走整场评测
                 print(f"  → 异常：{type(exc).__name__}: {exc}")
                 rows_r.append(
@@ -434,6 +456,9 @@ def main() -> int:
         # 宁可多一个绝对路径，也不写空值让人误判「没记题集来源」。
         "tasks_file": rel_or_abs(TASKS_FILE),
         "repeat": repeat,
+        # 本次用哪个大脑跑的。老结果文件没有这个字段（那时只有一个大脑），
+        # 读取侧按缺省 = deepseek-chat 兼容，不要因为缺字段就报错。
+        "model": model_name,
         "summary": summary,
         "results": rows,
     }

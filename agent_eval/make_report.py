@@ -36,6 +36,11 @@ TASKS_FILE = BASE_DIR / "tasks.json"
 # 与 run_eval.py / results/README.md 保持一致的作废标记
 INVALID_MARK = "-INVALID-"
 
+# 老结果文件没有 model 字段（那时只有一个大脑），读取侧按这个缺省值兼容。
+# 与 agent_eval/common.py 的 AGENT_MODEL_NAME 同步，但这里不 import 它——
+# common 会连带把 smolagents 拉进来，生成报告不该依赖运行时依赖。
+DEFAULT_BRAIN = "deepseek-chat"
+
 # 陷阱题防线要看的题：id → 这块防线在考什么（t08 是 v2 新增的防线说明）
 TRAP_LABELS: dict[str, str] = {
     "t06-pure-calc-trap": "过度调用",
@@ -278,6 +283,7 @@ def build_html(result: dict[str, Any], source: Path) -> str:
     detail_rows = [r for r in rows if r.get("id") in detail_ids]
 
     data_source = str(meta.get("data_source") or "（tasks.json 未声明）")
+    brain = str(result.get("model") or DEFAULT_BRAIN)
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return f"""<!DOCTYPE html>
@@ -291,7 +297,7 @@ def build_html(result: dict[str, Any], source: Path) -> str:
 <body>
 <div class="wrap">
   <h1>Agent 评测报告</h1>
-  <div class="sub">任务集 {esc(meta.get("name") or "—")} · 结果文件 {esc(source.name)} · repeat={esc(result.get("repeat", 1))}</div>
+  <div class="sub">任务集 {esc(meta.get("name") or "—")} · 结果文件 {esc(source.name)} · repeat={esc(result.get("repeat", 1))} · 大脑 <b>{esc(brain)}</b></div>
 
   <div class="card">
     <h2>汇总</h2>
@@ -323,6 +329,7 @@ def build_html(result: dict[str, Any], source: Path) -> str:
     任务集版本：{esc(meta.get("name") or "—")}（{esc(TASKS_FILE.name)}）<br>
     数据源报告：{esc(data_source)}<br>
     结果文件：{esc(source.name)}　跑测时间：{esc(result.get("started_at", "—"))} → {esc(result.get("finished_at", "—"))}<br>
+    本次大脑：{esc(brain)}（同一个 agent、同一套题，换大脑跑的才是可比的成绩）<br>
     生成时间：{esc(stamp)}　生成脚本：agent_eval/make_report.py（阿锤）
   </footer>
 </div>

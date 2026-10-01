@@ -34,11 +34,15 @@ DEFAULT_TOOLS = [calculator, get_eval_result]
 DEFAULT_MAX_STEPS = 8
 
 
-def build_model() -> OpenAIServerModel:
-    """从项目配置构造大脑：model_id / api_key 都来自 models.yaml + .env。"""
+def build_model(model_name: str = AGENT_MODEL_NAME) -> OpenAIServerModel:
+    """从项目配置构造大脑：model_id / api_key 都来自 models.yaml + .env。
+
+    ``model_name`` 是 configs/models.yaml 里的引用名（``deepseek-chat`` /
+    ``deepseek-pro`` ……）。不传就是默认大脑，行为与加这个参数之前完全一致。
+    """
     config = load_config()
     try:
-        cfg = config.get_model(AGENT_MODEL_NAME)
+        cfg = config.get_model(model_name)
     except ConfigError as exc:
         raise SystemExit(f"[配置错误] {exc}")
 
@@ -210,6 +214,7 @@ def dump_trajectory(
     usage: dict[str, int],
     tag: str = "",
     extra: dict[str, Any] | None = None,
+    model_name: str = AGENT_MODEL_NAME,
 ) -> Path:
     """轨迹落盘，返回文件路径。
 
@@ -222,7 +227,7 @@ def dump_trajectory(
     path = TRAJECTORY_DIR / f"trajectory-{stamp}{suffix}.json"
     payload: dict[str, Any] = {
         "task": task,
-        "model": AGENT_MODEL_NAME,
+        "model": model_name,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
         "steps": len(logs),
         "tool_usage": usage,
@@ -235,23 +240,32 @@ def dump_trajectory(
     return path
 
 
-def run_agent_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, tag: str = "") -> dict[str, Any]:
-    """新建 agent 跑一个任务，返回 {final_answer, logs, usage, trajectory_path, steps}。
+def run_agent_task(
+    task: str,
+    max_steps: int = DEFAULT_MAX_STEPS,
+    tag: str = "",
+    model_name: str = AGENT_MODEL_NAME,
+) -> dict[str, Any]:
+    """新建 agent 跑一个任务，返回 {final_answer, logs, usage, trajectory_path, steps, model}。
 
     **每题新建 agent**：agent 是带记忆的对象，复用会让上一题的对话渗进下一题，
     评测就不是在评同一个东西了。
+
+    ``model_name`` 决定这次用哪个大脑（models.yaml 的引用名），沿用 ``build_model``
+    的默认值；轨迹里记的就是这一个，事后复盘才不会把两个脑子的轨迹混着看。
     """
-    model = build_model()
+    model = build_model(model_name)
     agent = ToolCallingAgent(tools=list(DEFAULT_TOOLS), model=model, max_steps=max_steps)
 
     final_answer = str(agent.run(task))
     logs = collect_logs(agent)
     usage = tool_usage(logs)
-    path = dump_trajectory(task, logs, final_answer, usage, tag=tag)
+    path = dump_trajectory(task, logs, final_answer, usage, tag=tag, model_name=model_name)
     return {
         "final_answer": final_answer,
         "logs": logs,
         "usage": usage,
         "trajectory_path": rel_or_abs(path),
         "steps": len(logs),
+        "model": model_name,
     }
