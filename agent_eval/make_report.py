@@ -3,6 +3,12 @@
 用法：
     python agent_eval/make_report.py                 # 取 results/ 下最新正式结果
     python agent_eval/make_report.py <result.json>   # 指定某次结果
+    python agent_eval/make_report.py --stamp 20261001-103426
+
+**报告文件名的时间戳默认取自结果文件**：``result-20261001-103426.json`` →
+``agent-eval-20261001-103426.html``。这样结果和报告天生同时间戳，看板配对时
+「精确匹配」一击即中，不用靠「取之后生成的最新一份」去猜。要覆盖就用
+``--stamp``（格式必须是 ``YYYYmmdd-HHMMSS``，否则产出的文件名没人认得）。
 
 为什么单文件：报告是要被当成「一次评测的结论」传来传去、归档、贴进聊天框的，
 带一堆 css/js 或者依赖 localhost:8080 的服务，收件人打开就是一片白。所以样式
@@ -16,6 +22,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -87,6 +94,13 @@ CSS = """
 
 def esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
+
+
+def _stamp_of(name: str) -> str | None:
+    """从 ``result-20261001-103426.json`` / ``agent-eval-20261001-103426.html``
+    里取 ``YYYYmmdd-HHMMSS`` 时间戳；取不到返回 None。"""
+    m = re.search(r"\d{8}-\d{6}", str(name))
+    return m.group(0) if m else None
 
 
 def latest_result() -> Path:
@@ -317,19 +331,72 @@ def build_html(result: dict[str, Any], source: Path) -> str:
 """
 
 
-def main() -> int:
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else latest_result()
+USAGE = (
+    "用法：python agent_eval/make_report.py [<result.json>] [--stamp YYYYmmdd-HHMMSS]\n"
+    "  --stamp   指定报告文件名的时间戳（默认取自结果文件名，让两者精确配对）"
+)
+
+
+def _parse_args(argv: list[str]) -> tuple[Path | None, str | None]:
+    """极简参数解析：零依赖，够用就好。返回 (结果文件路径, --stamp)。"""
+    source: Path | None = None
+    stamp: str | None = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in ("-h", "--help"):
+            raise SystemExit(USAGE)
+        if arg == "--stamp":
+            if index + 1 >= len(argv):
+                raise SystemExit("[用法] --stamp 后面要跟时间戳，如 --stamp 20261001-103426")
+            stamp = argv[index + 1]
+            index += 2
+            continue
+        if arg.startswith("--stamp="):
+            stamp = arg.split("=", 1)[1]
+            index += 1
+            continue
+        if source is None:
+            source = Path(arg)
+            index += 1
+            continue
+        raise SystemExit(f"[用法] 多余参数：{arg}\n{USAGE}")
+    if stamp is not None and _stamp_of(stamp) != stamp:
+        raise SystemExit(
+            f"[用法] --stamp 格式应为 YYYYmmdd-HHMMSS（如 20261001-103426），收到：{stamp}"
+        )
+    return source, stamp
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    source_arg, stamp_arg = _parse_args(args)
+
+    source = source_arg or latest_result()
     if not source.is_file():
         raise SystemExit(f"[错误] 结果文件不存在：{source}")
     result = json.loads(source.read_text(encoding="utf-8"))
 
+    # 时间戳优先级：--stamp > 结果文件名 > 当前时间。
+    # 默认取结果文件名里的那份，是为了让报告与结果天生同戳——看板配对不用猜。
+    if stamp_arg:
+        stamp, origin = stamp_arg, "--stamp 指定"
+    else:
+        from_name = _stamp_of(source.name)
+        if from_name:
+            stamp, origin = from_name, "取自结果文件名（与结果精确配对）"
+        else:
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            origin = f"结果文件名里没时间戳，退回当前时间（{source.name}）"
+
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out = REPORTS_DIR / f"agent-eval-{stamp}.html"
+    overwrite = out.is_file()
     out.write_text(build_html(result, source), encoding="utf-8")
 
-    print(f"[报告] 已生成：{out}")
+    print(f"[报告] 已{'覆盖' if overwrite else '生成'}：{out}")
     print(f"[报告] 数据源：{source}")
+    print(f"[报告] 时间戳：{stamp}（{origin}）")
     return 0
 
 

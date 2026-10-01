@@ -1097,25 +1097,57 @@ function agentRepeatCard(latest) {
     </div>`;
 }
 
+// 首页只放一张「一眼看完」的小卡片：最新成绩 + 跳转入口。
+// 完整内容（逐题一致性、历史结果表）搬去 #agent 独立页签——首页已经很挤了，
+// 再塞一张大表会把「LLM 评测报告」这个主角挤下去。
 function agentCardHtml(a) {
-  const runs = (a && a.runs) || [];
-  const head = `<div style="font-weight:600;margin-bottom:4px">Agent 评测</div>`;
-  if (!runs.length) {
-    return `<div class="card">${head}
-      <div class="sub" style="margin:0">暂无结果。数据源：<code>agent_eval/results/</code> 与
+  const latest = (a && a.latest) || null;
+  const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
+      <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
+  const body = latest
+    ? `<div class="sub" style="margin-bottom:0">
+        ${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''} ·
+        repeat ${esc(latest.repeat)} 遍 · 平均 ${esc(latest.avg_steps ?? '—')} 步
+        ${latest.trap_hold ? ' <span class="badge pass">陷阱题守住</span>'
+          : (latest.trap_hold === false ? ' <span class="badge fail">陷阱题未守住</span>' : '')}
+        ${latest.report ? ` · ${agentReportLink(latest)}` : ''}
+      </div>
+      <div class="grid" style="margin:10px 0 4px">
+        ${statHtml('任务成功率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过</div>`, rateColor(latest.pass_rate || 0))}
+        ${statHtml('工具选择正确率', pct(latest.tool_rate || 0), rateColor(latest.tool_rate || 0))}
+      </div>`
+    : `<div class="sub" style="margin:0">暂无结果。数据源：<code>agent_eval/results/</code> 与
         <code>results/archive/</code> 下的 <code>result-*.json</code>；带
-        <code>-INVALID-</code> 的作废存档不显示。</div></div>`;
-  }
-  const latest = a.latest || runs[0];
-  const holdBadge = latest.trap_hold
+        <code>-INVALID-</code> 的作废存档不显示。</div>`;
+  return `
+    <div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <div style="font-weight:600;margin-bottom:4px">Agent 评测</div>
+        ${body}
+      </div>
+      <a class="back" href="#agent">查看 Agent 评测 →</a>
+    </div>`;
+}
+
+// Agent 评测页（#agent）：最新一次的四个指标 + 逐题一致性 + 历史结果表
+async function renderAgent() {
+  const a = await fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
+  const runs = (a && a.runs) || [];
+  const latest = (a && a.latest) || null;
+  const holdBadge = latest && latest.trap_hold
     ? '<span class="badge pass">守住</span>'
-    : (latest.trap_hold === false ? '<span class="badge fail">未守住</span>' : '<span class="catname">—</span>');
+    : (latest && latest.trap_hold === false ? '<span class="badge fail">未守住</span>' : '<span class="catname">—</span>');
   const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
       <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
 
-  return `
+  $app.innerHTML = `
+    <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+    <h1>Agent 评测 <span class="sub" style="font-size:13px;font-weight:400">（agent 有没有调对工具 / 答对题）</span></h1>
+    <div class="sub">数据源：<code>agent_eval/results/</code>（含 <code>archive/</code>）；
+      这里的「通过率」是 agent 调对工具的比例，与上面「LLM 评测报告」的模型答对率不是一回事，
+      所以分开看，不并在一张表里。</div>
+    ${latest ? `
     <div class="card">
-      ${head}
       <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
         · ${esc(latest.file)}${latest.report ? ` · ${agentReportLink(latest)}` : ''}</div>
       <div class="grid" style="margin-bottom:4px">
@@ -1125,7 +1157,9 @@ function agentCardHtml(a) {
         ${statHtml('陷阱题防线', holdBadge)}
       </div>
       ${agentRepeatCard(latest)}
-      <div style="font-weight:600;margin:16px 0 4px">历史结果</div>
+    </div>
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
       <table>
         <tr><th>时间</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
         ${runs.map(r => `
@@ -1138,11 +1172,13 @@ function agentCardHtml(a) {
                 : `<span class="badge fail">${esc(r.failed ?? 0)} 失败${Number(r.invalid || 0) ? ` · ${esc(r.invalid)} 无效` : ''}</span>`}
               <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
             <td>${agentReportLink(r)}</td>
-          </tr>`).join('')}
+          </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
       </table>
       <div class="hint" style="padding:10px 12px 0">带 <code>-INVALID-</code> 的作废存档不进看板；
         报告链接按时间戳配对（精确匹配优先，配不上取该结果之后生成的最新一份），配不上显示「—」。</div>
-    </div>`;
+    </div>` : `
+    <div class="card"><div class="sub" style="margin:0">暂无结果。先跑
+      <code>python agent_eval/run_eval.py</code> 生成 <code>agent_eval/results/result-*.json</code>。</div></div>`}`;
 }
 
 // 渲染报告列表（首页）
@@ -1895,7 +1931,8 @@ $app.addEventListener('click', e => {
   if (trCase) { openDrawer(window.casesByKey.get(trCase.dataset.case)); return; }
 });
 
-// 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；#tests 看 pytest 用例详情
+// 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；
+// #tests 看 pytest 用例详情，#agent 看 Agent 工具调用评测
 async function main() {
   const hash = location.hash.slice(1);
   try {
@@ -1907,6 +1944,7 @@ async function main() {
     const [file, tab = 'summary'] = hash.split('/');
     if (!file) return renderList(await (await fetch('api/reports.json')).json());
     if (file === 'tests') return renderTests();
+    if (file === 'agent') return renderAgent();
     return renderDetail(decodeURIComponent(file), tab);
   } catch (e) {
     _showError(`main() 失败：${e.message || e}\n（hash="${hash}", file="${hash.split('/')[0]}", tab="${hash.split('/')[2] || 'summary'}"）`);
