@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""评测报告看板 —— 零依赖（仅 Python 标准库）。
+"""评测实验室看板 —— 零依赖（仅 Python 标准库）。
 
 用法：
     python dashboard/app.py            # 默认 0.0.0.0:8080
@@ -611,7 +611,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LLM 评测报告看板</title>
+<title>LLM &amp; Agent 评测实验室</title>
 <style>
   :root {
     --bg: #0f1420; --panel: #171e2e; --panel2: #1d2740; --border: #2a3650;
@@ -696,6 +696,23 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   details.card > summary::before { content: '▸ '; color: var(--muted); }
   details.card[open] > summary::before { content: '▾ '; }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
+  /* 门户页（空 hash）：两张等大入口卡。grid 的 1fr/1fr 保证同宽，
+     默认 align-items:stretch 保证同高，短的那张不会被压成半张。 */
+  .portal { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .pcard { display: block; background: var(--panel); border: 1px solid var(--border);
+           border-radius: 12px; padding: 20px 22px; color: inherit; text-decoration: none;
+           transition: border-color .15s, transform .15s; }
+  .pcard:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .ptitle { font-size: 17px; font-weight: 600; }
+  .psub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  /* 卡片三段式：被测对象 / 怎么测 / 最新成绩 */
+  .psec { margin-top: 10px; font-size: 13px; line-height: 1.7; }
+  .plabel { display: inline-block; min-width: 62px; color: var(--muted); font-size: 12px; }
+  .pchip { display: inline-block; background: var(--panel2); border: 1px solid var(--border);
+           border-radius: 8px; padding: 2px 8px; margin: 0 4px 4px 0; }
+  .pwhen { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .pgo { color: var(--accent); font-size: 13px; margin-top: 14px; }
+  .pfoot { color: var(--muted); font-size: 12px; margin-top: 14px; text-align: center; }
 
   /* 标签页导航 */
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
@@ -1097,49 +1114,6 @@ function agentRepeatCard(latest) {
     </div>`;
 }
 
-// 首页只放一张「一眼看完」的小卡片：最新成绩 + 跳转入口。
-// 完整内容（逐题一致性、历史结果表）搬去 #agent 独立页签——首页已经很挤了，
-// 再塞一张大表会把「LLM 评测报告」这个主角挤下去。
-function agentCardHtml(a) {
-  const runs = (a && a.runs) || [];
-  const latest = (a && a.latest) || null;
-  const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
-      <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
-  // repeat 一致性只有 repeat>1 才有（单遍结果没有可比对象，后端也不会给这个字段）
-  const rs = latest && latest.repeat_summary;
-  const consistencyHtml = rs ? `<div class="sub" style="margin:8px 0 0">
-      repeat ${esc(rs.遍数)} 遍一致性：状态一致
-      <b>${esc(rs.状态一致题数)}</b> / ${esc(latest.total ?? 0)} 题
-      ${rs.全部一致 ? '<span class="badge pass">全部一致</span>' : '<span class="badge warn">存在抖动题</span>'}
-    </div>` : '';
-  const body = latest
-    ? `<div class="sub" style="margin-bottom:0">
-        ${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''} ·
-        repeat ${esc(latest.repeat)} 遍 · 平均 ${esc(latest.avg_steps ?? '—')} 步
-        ${latest.trap_hold ? ' <span class="badge pass">陷阱题守住</span>'
-          : (latest.trap_hold === false ? ' <span class="badge fail">陷阱题未守住</span>' : '')}
-        ${latest.report ? ` · ${agentReportLink(latest)}` : ''}
-      </div>
-      <div class="grid" style="margin:10px 0 4px">
-        ${statHtml('任务成功率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过</div>`, rateColor(latest.pass_rate || 0))}
-        ${statHtml('工具选择正确率', pct(latest.tool_rate || 0), rateColor(latest.tool_rate || 0))}
-      </div>
-      ${consistencyHtml}`
-    : `<div class="sub" style="margin:0">暂无结果。数据源：<code>agent_eval/results/</code> 与
-        <code>results/archive/</code> 下的 <code>result-*.json</code>；带
-        <code>-INVALID-</code> 的作废存档不显示。</div>`;
-  // 「共 N 次」只数正式结果：runs 是后端过滤掉 -INVALID- 之后的列表，直接取长度即可
-  const linkText = runs.length ? `共 ${runs.length} 次 · 查看 →` : '查看 Agent 评测 →';
-  return `
-    <div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:260px">
-        <div style="font-weight:600;margin-bottom:4px">Agent 评测</div>
-        ${body}
-      </div>
-      <a class="back" href="#agent">${esc(linkText)}</a>
-    </div>`;
-}
-
 // Agent 评测页（#agent）：最新一次的四个指标 + 逐题一致性 + 历史结果表
 async function renderAgent() {
   const a = await fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
@@ -1152,7 +1126,7 @@ async function renderAgent() {
       <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
 
   $app.innerHTML = `
-    <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+    <a class="back" href="#">← 返回实验室首页</a>
     <h1>Agent 评测 <span class="sub" style="font-size:13px;font-weight:400">（agent 有没有调对工具 / 答对题）</span></h1>
     <div class="sub">数据源：<code>agent_eval/results/</code>（含 <code>archive/</code>）；
       这里的「通过率」是 agent 调对工具的比例，与上面「LLM 评测报告」的模型答对率不是一回事，
@@ -1192,7 +1166,78 @@ async function renderAgent() {
       <code>python agent_eval/run_eval.py</code> 生成 <code>agent_eval/results/result-*.json</code>。</div></div>`}`;
 }
 
-// 渲染报告列表（首页）
+// 一份报告里参与「成绩」的模型行：横向报告取 model_rows，单模型报告取 model 一个。
+const modelsOf = r => (isMultiModel(r) ? r.model_rows : [{ model: r.model }]).filter(x => x && x.model);
+// 时间戳 20260923-143903 → 2026-09-23 14:39（门户上要给访问者看日期）
+const fmtTime = t => (t && String(t).length >= 13)
+  ? `${String(t).slice(0,4)}-${String(t).slice(4,6)}-${String(t).slice(6,8)} ${String(t).slice(9,11)}:${String(t).slice(11,13)}`
+  : (t || '—');
+
+// 门户成绩取哪份报告：**从最新往回找第一份含真实模型（非 mock-*）的报告**。
+// CD 冒烟报告只有 mock-baseline（管道自检的假模型），拿它当成绩会把「mock 基线」
+// 显示成实验室的结论——那是给访问者看的第一屏，误导最严重。mock-only 的报告
+// 只计入「共 N 份报告」，不进成绩。
+function pickScoringReport(reports) {
+  return (reports || []).find(r => modelsOf(r).some(x => !isMockModel(x.model))) || null;
+}
+
+// 门户页（空 hash）：两层评测各一张入口卡，等大并排。
+// 每张卡三段式：被测对象 / 怎么测 / 最新成绩——访问者一眼看明白测的是谁、怎么测、结果如何。
+async function renderPortal(reports) {
+  const agent = await fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
+  const sec = (label, body) => `<div class="psec"><span class="plabel">${esc(label)}</span>${body}</div>`;
+
+  // 模型层：成绩来自「第一份含真实模型的报告」，逐真实模型给通过率 + 报告日期
+  const scoring = pickScoringReport(reports);
+  const realRows = scoring ? modelsOf(scoring).filter(x => !isMockModel(x.model)) : [];
+  const realNames = realRows.map(x => x.model);
+  const llmScore = scoring ? `
+      ${sec('最新成绩', realRows.map(x =>
+        `<span class="pchip">${esc(x.model)} <b class="rate" style="color:${rateColor(listRate(scoring, x))}">${pct(listRate(scoring, x))}</b></span>`
+      ).join(' ') + `<span class="pwhen">${esc(fmtTime(scoring.time))} · 共 ${reports.length} 份报告</span>`)}`
+    : sec('最新成绩', `<span class="pwhen">暂无含真实模型的报告</span>`);
+  const llmCard = `
+      <div class="ptitle">模型层评测</div>
+      ${sec('被测对象', realNames.length
+        ? realNames.map(n => `<b>${esc(n)}</b>`).join(' vs ')
+        : '<span class="pwhen">（暂无真实模型数据）</span>')}
+      ${sec('怎么测', '同一用例集横向对比 · 接入 CI 回归门禁')}
+      ${llmScore}`;
+
+  // Agent 层：被测对象/怎么测/最新成绩，口径同 #agent 页
+  const aLatest = (agent && agent.latest) || null;
+  const aRs = aLatest && aLatest.repeat_summary;
+  const trapCount = (aLatest && Array.isArray(aLatest.traps)) ? aLatest.traps.length : 4;
+  const agentCard = `
+      <div class="ptitle">Agent 层评测</div>
+      ${sec('被测对象', '一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>')}
+      ${sec('怎么测', `${esc(aLatest ? aLatest.total : 10)} 道任务含 ${esc(trapCount)} 道陷阱 · 四层断言 · repeat=${esc(aLatest ? aLatest.repeat : 3)}`)}
+      ${aLatest ? sec('最新成绩', `
+        <span class="pchip">任务 <b class="rate" style="color:${rateColor(aLatest.pass_rate || 0)}">${esc(aLatest.passed ?? 0)}/${esc(aLatest.total ?? 0)}</b></span>
+        <span class="pchip">工具选择 <b class="rate" style="color:${rateColor(aLatest.tool_rate || 0)}">${pct(aLatest.tool_rate || 0)}</b></span>
+        ${aRs ? `<span class="badge ${aRs.全部一致 ? 'pass' : 'warn'}">repeat ${esc(aRs.遍数)} 遍${aRs.全部一致 ? '全部一致' : '存在抖动'}</span>` : ''}
+        <span class="pwhen">${esc(fmtTime(aLatest.time))}</span>`)
+      : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
+
+  $app.innerHTML = `
+    <h1>LLM &amp; Agent 评测实验室</h1>
+    <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
+      Agent 层：一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>，
+      10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
+    <div class="portal">
+      <a class="pcard" href="#llm">
+        ${llmCard}
+        <div class="pgo">查看模型层详情 →</div>
+      </a>
+      <a class="pcard" href="#agent">
+        ${agentCard}
+        <div class="pgo">查看 Agent 层详情 →</div>
+      </a>
+    </div>
+    <div class="pfoot">数据由 CI 回归与本地评测自动更新。</div>`;
+}
+
+// 渲染报告列表（#llm，原首页）
 async function renderList(reports) {
   const tests = await (await fetch('api/tests.json')).json();
   const hasTests = tests && tests.total;
@@ -1206,14 +1251,11 @@ async function renderList(reports) {
     ? reports[0].model_rows.map(x => listRate(reports[0], x))
     : [topRate];
   // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
-  // Agent 评测板块同源：拉不到就显示空状态，不能让首页一起挂掉
-  const [bannerData, agent] = await Promise.all([
-    computeBannerData(reports),
-    fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null),
-  ]);
+  const bannerData = await computeBannerData(reports);
   $app.innerHTML = `
+    <a class="back" href="#">← 返回实验室首页</a>
     ${bannerData ? renderBanner(bannerData) : ''}
-    <h1>LLM 评测报告看板</h1>
+    <h1>LLM 评测</h1>
     <div class="sub">共 ${reports.length} 份报告 · ${reports.reduce((a,r)=>a+r.case_count,0)} 个用例 · 最新 ${esc(reports[0].time)}</div>
     <div class="grid" style="margin-bottom:16px">
       <div class="stat"><div class="k">报告数</div><div class="v">${reports.length}</div></div>
@@ -1245,7 +1287,6 @@ async function renderList(reports) {
       </details>` : ''}
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
-    ${agentCardHtml(agent)}
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>${hasStability ? '稳定率 / 通过率' : '通过率'}</th><th>P95 延迟</th></tr>
       ${reports.map((r, i) => {
@@ -1294,7 +1335,7 @@ function attributesBar(a) {
 async function renderDetail(file, tab) {
   const r = await (await fetch('api/report/' + encodeURIComponent(file))).json();
   $app.innerHTML = `
-    <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+    <a class="back" href="#llm">← 返回报告列表</a>
     <h1>${esc(file)}</h1>
     <div class="sub">${esc(r.started_at || '')} · ${r.case_count} 用例 · ${((r.duration_s ?? 0)).toFixed(2)}s
       · 数据集：${esc((r.datasets || []).join(', '))}</div>
@@ -1811,7 +1852,7 @@ async function renderTests() {
   const tests = (detail && detail.tests) || [];
   if (!tests.length) {
     $app.innerHTML = `
-      <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+      <a class="back" href="#llm">← 返回报告列表</a>
       <h1>测试详情</h1>
       <div class="card"><div class="sub" style="margin:0">暂无测试详情（api/tests-detail.json 不存在）</div></div>`;
     return;
@@ -1824,7 +1865,7 @@ async function renderTests() {
   _testsState = { tests, files, summary: summaryInfo, filter: 'all', file: '', q: '', latestReport };
 
   $app.innerHTML = `
-    <a class="back" href="#" onclick="location.hash='';return false">← 返回报告列表</a>
+    <a class="back" href="#llm">← 返回报告列表</a>
     <h1>测试详情 <span class="sub" style="font-size:13px;font-weight:400">（pytest 框架单测）</span></h1>
     <div class="sub">
       本页是框架自身的单元测试。要看的<b>评测输入 / 模型输出</b>在这里：${evalLink || '（暂无评测报告）'}
@@ -1943,17 +1984,19 @@ $app.addEventListener('click', e => {
 });
 
 // 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；
-// #tests 看 pytest 用例详情，#agent 看 Agent 工具调用评测
+// 空 hash = 门户页（两层入口）；#llm 模型层原报告列表；#tests 用例详情；#agent Agent 评测
 async function main() {
   const hash = location.hash.slice(1);
+  const isPortal = !hash || hash === '/';
   try {
-    if (!hash) {
-      const reports = await (await fetch('api/reports.json')).json();
-      if (!reports.length) { $app.innerHTML = '<div class="empty">reports/ 目录下暂无报告，先跑一次评测 runner 吧。</div>'; return; }
-      return renderList(reports);
+    const reports = await (await fetch('api/reports.json')).json();
+    if (isPortal) {
+      // 门户页即使没有报告也要能出（Agent 层可能是有数据的），空态由卡片自己兜
+      return renderPortal(reports);
     }
     const [file, tab = 'summary'] = hash.split('/');
-    if (!file) return renderList(await (await fetch('api/reports.json')).json());
+    if (!file) return renderPortal(reports);
+    if (file === 'llm') return renderList(reports);
     if (file === 'tests') return renderTests();
     if (file === 'agent') return renderAgent();
     return renderDetail(decodeURIComponent(file), tab);
@@ -2267,7 +2310,7 @@ def main():
     # 必须是多线程：首页会并发请求 reports.json / tests.json / 多份 report.json，
     # 单线程 HTTPServer 遇到 keep-alive 连接会串行排队，第二次打开页面就容易卡死。
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"评测报告看板已启动: http://0.0.0.0:{PORT}  (数据源: {REPORTS_DIR})")
+    print(f"评测实验室看板已启动: http://0.0.0.0:{PORT}  (数据源: {REPORTS_DIR})")
     server.serve_forever()
 
 

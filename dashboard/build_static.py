@@ -84,7 +84,7 @@ def build(reports_dir: Path, out_dir: Path) -> int:
 
 def main():
     here = Path(__file__).resolve().parent
-    parser = argparse.ArgumentParser(description="导出静态评测报告看板")
+    parser = argparse.ArgumentParser(description="导出静态评测实验室站点")
     parser.add_argument(
         "--reports-dir",
         default=str(here / "data"),
