@@ -1171,7 +1171,16 @@ async function renderPortal(reports) {
   const multi = latest && isMultiModel(latest);
   const rates = multi ? latest.model_rows.map(x => listRate(latest, x))
     : (latest ? [listRate(latest, latest)] : []);
-  const modelCount = multi ? latest.model_rows.length : (latest ? 1 : 0);
+  // 对比模型数：全部报告去重后的**真实**模型数。mock-* 是管道基线不是被测对象
+  // （口径与详情页矩阵一致），不算进来。之前只看最新一份报告——单模型回归报告
+  // 会把「1」顶到门户上，让人以为实验室只对比过一个模型。
+  const realModels = new Set();
+  for (const r of reports) {
+    for (const x of (isMultiModel(r) ? r.model_rows : [{ model: r.model }])) {
+      if (x && x.model && !isMockModel(x.model)) realModels.add(x.model);
+    }
+  }
+  const modelCount = realModels.size;
   const llmSummary = latest ? `
       <div class="grid" style="margin-top:12px">
         ${statHtml(`最新${isStability(latest) ? '稳定率' : '通过率'}`,
