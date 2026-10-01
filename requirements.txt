@@ -22,3 +22,7 @@ pytest>=8.0.0
 
 # 3) 阶段 4 可视化看板
 # streamlit>=1.35.0
+
+# 4) Agent 评测（agent_eval/）：ToolCallingAgent + 工具调用轨迹
+#    会连带装 huggingface-hub / rich 等，且要求 Python >= 3.10
+# smolagents>=1.26.0

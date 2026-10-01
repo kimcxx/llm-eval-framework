@@ -27,3 +27,13 @@ models/
 # ---- 看板构建产物 / 覆盖率 ----
 dashboard/dist/
 .coverage
+
+# ---- Agent 评测运行产物（agent_eval/）----
+# 轨迹：每题每遍一份、含完整模型输入输出，体积大且每次跑都新增，不入库。
+agent_eval/trajectories/
+# HTML 报告：make_report.py 的生成物，类比 dashboard/dist/，不入库。
+agent_eval/reports/*.html
+# 结果：只留「当前那份正式结果」入库（见 agent_eval/results/README.md），
+# 历史正式结果与 INVALID 作废存档本地留存即可。
+agent_eval/results/archive/
+agent_eval/results/result-INVALID-*.json
