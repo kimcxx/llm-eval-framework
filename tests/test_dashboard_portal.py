@@ -68,6 +68,23 @@ class TestPortalCardContent:
             assert name in app.PAGE, f"简介段缺少被测对象名：{name}"
 
 
+class TestPortalPositioning:
+    """门户的定位语与「项目定位与局限」区块：调门降下来，边界写清楚。"""
+
+    def test_lead_line_present(self) -> None:
+        assert 'class="plead"' in app.PAGE, "h1 下面缺定位语"
+        assert "自学实战项目" in app.PAGE, "定位语要点明这是自学实战项目"
+        assert "不是生产级框架" in app.PAGE, "定位语要划清不是生产级框架"
+
+    def test_scope_block_covers_all_three_groups(self) -> None:
+        block = app.PAGE[app.PAGE.index("项目定位与局限"):]
+        block = block[:block.index("数据由 CI 回归与本地评测自动更新")]
+        for group in ("规模", "未覆盖", "已跑通的闭环"):
+            assert f">{group}<" in block or f"{group}" in block, f"局限区块缺「{group}」组"
+        for fact in ("多轮对话状态", "RAG", "安全红队", "repeat=3", "meta.v2_changes"):
+            assert fact in block, f"局限区块缺信息点：{fact}"
+
+
 class TestAgentBrainFollowsData:
     """Agent 层「被测对象」跟随数据：换了几个大脑就写几个，不许写死。"""
 
