@@ -154,6 +154,37 @@ def test_load_agent_runs_all_invalid_returns_empty(agent_dirs):
     assert app.load_agent_runs() == []
 
 
+# ---------- 大脑（--model）----------
+
+def _write_result_with_model(directory: Path, stamp: str, model: str | None) -> Path:
+    """写一份结果 JSON；model=None 表示老结果（那时还没有换大脑这回事）。"""
+    directory.mkdir(parents=True, exist_ok=True)
+    payload = _result_payload()
+    if model is not None:
+        payload["model"] = model
+    path = directory / f"result-{stamp}.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_brain_defaults_to_chat_for_legacy_result(agent_dirs):
+    """老结果没有 model 字段 → 按缺省 deepseek-chat 补，不能报错也不能空着。"""
+    results, _, _ = agent_dirs
+    _write_result_with_model(results, "20260929-175350", None)
+
+    assert app.load_agent_runs()[0]["brain"] == "deepseek-chat"
+
+
+def test_brain_taken_from_model_field(agent_dirs):
+    """换了大脑跑的结果必须带出来：不同大脑的成绩在看板上分行看，不混。"""
+    results, _, _ = agent_dirs
+    _write_result_with_model(results, "20261001-103426", "deepseek-pro")
+    _write_result_with_model(results, "20261001-090000", "deepseek-chat")
+
+    runs = app.load_agent_runs()
+    assert [r["brain"] for r in runs] == ["deepseek-pro", "deepseek-chat"]
+
+
 # ---------- 报告配对 ----------
 
 def test_pair_report_exact_match(agent_dirs):

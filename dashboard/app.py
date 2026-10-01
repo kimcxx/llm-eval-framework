@@ -1134,6 +1134,7 @@ async function renderAgent() {
     ${latest ? `
     <div class="card">
       <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+        · 大脑 <b>${esc(latest.brain || 'deepseek-chat')}</b>
         · ${esc(latest.file)}${latest.report ? ` · ${agentReportLink(latest)}` : ''}</div>
       <div class="grid" style="margin-bottom:4px">
         ${statHtml('任务成功率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过</div>`, rateColor(latest.pass_rate || 0))}
@@ -1146,10 +1147,11 @@ async function renderAgent() {
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
       <table>
-        <tr><th>时间</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
+        <tr><th>时间</th><th>大脑</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
         ${runs.map(r => `
           <tr>
             <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
+            <td><span class="badge">${esc(r.brain || 'deepseek-chat')}</span></td>
             ${rateCell(r.pass_rate || 0)}
             <td><span class="badge">${esc(r.repeat)} 遍</span></td>
             <td>${Number(r.failed || 0) === 0 && Number(r.invalid || 0) === 0
@@ -1157,9 +1159,11 @@ async function renderAgent() {
                 : `<span class="badge fail">${esc(r.failed ?? 0)} 失败${Number(r.invalid || 0) ? ` · ${esc(r.invalid)} 无效` : ''}</span>`}
               <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
             <td>${agentReportLink(r)}</td>
-          </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="6" class="empty">暂无结果</td></tr>`}
       </table>
-      <div class="hint" style="padding:10px 12px 0">带 <code>-INVALID-</code> 的作废存档不进看板；
+      <div class="hint" style="padding:10px 12px 0">「大脑」= 这次驱动 agent 的模型（<code>--model</code>），
+        不同大脑的成绩各占一行、不合并：同一个 agent 换脑子跑出来的才是可比对比。
+        带 <code>-INVALID-</code> 的作废存档不进看板；
         报告链接按时间戳配对（精确匹配优先，配不上取该结果之后生成的最新一份），配不上显示「—」。</div>
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">暂无结果。先跑
@@ -1168,6 +1172,9 @@ async function renderAgent() {
 
 // 一份报告里参与「成绩」的模型行：横向报告取 model_rows，单模型报告取 model 一个。
 const modelsOf = r => (isMultiModel(r) ? r.model_rows : [{ model: r.model }]).filter(x => x && x.model);
+// Agent 结果的历史里有一段没有 brain 字段（那时只有一个大脑），按这个缺省补齐，
+// 与后端 _agent_entry 的口径一致。
+const DEFAULT_BRAIN = 'deepseek-chat';
 // 时间戳 20260923-143903 → 2026-09-23 14:39（门户上要给访问者看日期）
 const fmtTime = t => (t && String(t).length >= 13)
   ? `${String(t).slice(0,4)}-${String(t).slice(4,6)}-${String(t).slice(6,8)} ${String(t).slice(9,11)}:${String(t).slice(11,13)}`
@@ -1208,11 +1215,23 @@ async function renderPortal(reports) {
   const aLatest = (agent && agent.latest) || null;
   const aRs = aLatest && aLatest.repeat_summary;
   const trapCount = (aLatest && Array.isArray(aLatest.traps)) ? aLatest.traps.length : 4;
+  // 被测大脑名单：从 agent.json 的 runs 里去重取全部大脑（后端给每条补了 brain，
+  // 老结果缺省 deepseek-chat）。runs 按时间倒序，翻转一遍就是「首次出场」顺序，
+  // 后面再跑旧大脑也不会把名单顺序打乱。写死某个大脑名，换脑跑完就成了假话。
+  const aRuns = (agent && agent.runs) || [];
+  const brains = [];
+  for (const r of [...aRuns].reverse()) {
+    const name = (r && r.brain) || DEFAULT_BRAIN;
+    if (!brains.includes(name)) brains.push(name);
+  }
+  const brainsHtml = (brains.length ? brains : [DEFAULT_BRAIN]).map(b => `<b>${esc(b)}</b>`).join(' / ');
+  const latestBrain = (aLatest && aLatest.brain) || DEFAULT_BRAIN;
   const agentCard = `
       <div class="ptitle">Agent 层评测</div>
-      ${sec('被测对象', '一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>')}
+      ${sec('被测对象', `smolagents <b>ToolCallingAgent</b> · 大脑：${brainsHtml} · 2 个真实回归工具`)}
       ${sec('怎么测', `${esc(aLatest ? aLatest.total : 10)} 道任务含 ${esc(trapCount)} 道陷阱 · 四层断言 · repeat=${esc(aLatest ? aLatest.repeat : 3)}`)}
       ${aLatest ? sec('最新成绩', `
+        <span class="pchip">大脑 <b>${esc(latestBrain)}</b></span>
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(aLatest.pass_rate || 0)}">${esc(aLatest.passed ?? 0)}/${esc(aLatest.total ?? 0)}</b></span>
         <span class="pchip">工具选择 <b class="rate" style="color:${rateColor(aLatest.tool_rate || 0)}">${pct(aLatest.tool_rate || 0)}</b></span>
         ${aRs ? `<span class="badge ${aRs.全部一致 ? 'pass' : 'warn'}">repeat ${esc(aRs.遍数)} 遍${aRs.全部一致 ? '全部一致' : '存在抖动'}</span>` : ''}
@@ -1222,7 +1241,7 @@ async function renderPortal(reports) {
   $app.innerHTML = `
     <h1>LLM &amp; Agent 评测实验室</h1>
     <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
-      Agent 层：一个由 <b>deepseek-chat</b> 驱动、配 2 个真实回归工具的 <b>smolagents ToolCallingAgent</b>，
+      Agent 层：一个 <b>smolagents ToolCallingAgent</b>，大脑 ${brainsHtml} · 2 个真实回归工具，
       10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
     <div class="portal">
       <a class="pcard" href="#llm">
@@ -2141,6 +2160,10 @@ def _agent_entry(path: Path, archived: bool):
         "file": path.name,
         "archived": archived,
         "stamp": _agent_stamp(path.name),
+        # 这次用的是哪个大脑（models.yaml 的引用名）。老结果没有 model 字段
+        # （那时只有一个大脑），按缺省 deepseek-chat 补齐——不能让「换了脑子」
+        # 和「没换脑子」的成绩在同一行里混着看。
+        "brain": str(data.get("model") or "deepseek-chat"),
         "time": _agent_stamp(path.name) or data.get("finished_at") or data.get("started_at") or "?",
         "repeat": repeat,
         "total": summary.get("任务总数"),
