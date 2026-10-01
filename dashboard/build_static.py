@@ -9,6 +9,8 @@
     <out>/index.html                 首页
     <out>/api/reports.json           报告列表（同 /api/reports）
     <out>/api/report/<报告文件名>    各报告详情（同 /api/report/<name>）
+    <out>/api/agent.json             Agent 评测结果（同 /api/agent.json，只读 agent_eval/）
+    <out>/api/agent/report/<文件名>   Agent 评测的 HTML 报告（配上了才拷）
 """
 import argparse
 import json
@@ -45,6 +47,28 @@ def build(reports_dir: Path, out_dir: Path) -> int:
         json.dumps(tests_summary or {}, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    # Agent 评测板块（agent_eval/results/ 下的 result-*.json；只读，不改）
+    # 与动态服务同源：这里导出后，前端的 api/agent.json 在静态托管下照样能拉到。
+    agent_runs = app.load_agent_runs()
+    (out / "api" / "agent.json").write_text(
+        json.dumps(
+            {"latest": agent_runs[0] if agent_runs else None, "runs": agent_runs},
+            ensure_ascii=False,
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    # 配上了 HTML 报告的那些结果，把报告一起拷过去，否则静态站点里链接是死链
+    if agent_runs:
+        agent_report_out = out / "api" / "agent" / "report"
+        agent_report_out.mkdir(parents=True, exist_ok=True)
+        for run in agent_runs:
+            if not run.get("report"):
+                continue
+            src_html = app.AGENT_REPORTS_DIR / run["report"]
+            if src_html.is_file():
+                (agent_report_out / run["report"]).write_bytes(src_html.read_bytes())
+
     # 测试详情（每条用例：classname/name/status/duration_s/message），可缺失
     detail_src = app.REPORTS_DIR / "tests-detail.json"
     if detail_src.is_file():
@@ -53,7 +77,8 @@ def build(reports_dir: Path, out_dir: Path) -> int:
             detail_src.read_text(encoding="utf-8"), encoding="utf-8"
         )
 
-    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}{' + 用例详情' if detail_src.is_file() else ''}）")
+    agent_note = f" + Agent 评测 {len(agent_runs)} 次" if agent_runs else ""
+    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}{' + 用例详情' if detail_src.is_file() else ''}{agent_note}）")
     return len(reports)
 
 
