@@ -1101,9 +1101,17 @@ function agentRepeatCard(latest) {
 // 完整内容（逐题一致性、历史结果表）搬去 #agent 独立页签——首页已经很挤了，
 // 再塞一张大表会把「LLM 评测报告」这个主角挤下去。
 function agentCardHtml(a) {
+  const runs = (a && a.runs) || [];
   const latest = (a && a.latest) || null;
   const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
       <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
+  // repeat 一致性只有 repeat>1 才有（单遍结果没有可比对象，后端也不会给这个字段）
+  const rs = latest && latest.repeat_summary;
+  const consistencyHtml = rs ? `<div class="sub" style="margin:8px 0 0">
+      repeat ${esc(rs.遍数)} 遍一致性：状态一致
+      <b>${esc(rs.状态一致题数)}</b> / ${esc(latest.total ?? 0)} 题
+      ${rs.全部一致 ? '<span class="badge pass">全部一致</span>' : '<span class="badge warn">存在抖动题</span>'}
+    </div>` : '';
   const body = latest
     ? `<div class="sub" style="margin-bottom:0">
         ${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''} ·
@@ -1115,17 +1123,20 @@ function agentCardHtml(a) {
       <div class="grid" style="margin:10px 0 4px">
         ${statHtml('任务成功率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过</div>`, rateColor(latest.pass_rate || 0))}
         ${statHtml('工具选择正确率', pct(latest.tool_rate || 0), rateColor(latest.tool_rate || 0))}
-      </div>`
+      </div>
+      ${consistencyHtml}`
     : `<div class="sub" style="margin:0">暂无结果。数据源：<code>agent_eval/results/</code> 与
         <code>results/archive/</code> 下的 <code>result-*.json</code>；带
         <code>-INVALID-</code> 的作废存档不显示。</div>`;
+  // 「共 N 次」只数正式结果：runs 是后端过滤掉 -INVALID- 之后的列表，直接取长度即可
+  const linkText = runs.length ? `共 ${runs.length} 次 · 查看 →` : '查看 Agent 评测 →';
   return `
     <div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:260px">
         <div style="font-weight:600;margin-bottom:4px">Agent 评测</div>
         ${body}
       </div>
-      <a class="back" href="#agent">查看 Agent 评测 →</a>
+      <a class="back" href="#agent">${esc(linkText)}</a>
     </div>`;
 }
 
