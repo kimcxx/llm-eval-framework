@@ -1119,7 +1119,7 @@ async function renderAgent() {
       <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
 
   $app.innerHTML = `
-    <a class="back" href="#llm">← 返回报告列表</a>
+    <a class="back" href="#">← 返回实验室首页</a>
     <h1>Agent 评测 <span class="sub" style="font-size:13px;font-weight:400">（agent 有没有调对工具 / 答对题）</span></h1>
     <div class="sub">数据源：<code>agent_eval/results/</code>（含 <code>archive/</code>）；
       这里的「通过率」是 agent 调对工具的比例，与上面「LLM 评测报告」的模型答对率不是一回事，
@@ -1234,6 +1234,7 @@ async function renderList(reports) {
   // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
   const bannerData = await computeBannerData(reports);
   $app.innerHTML = `
+    <a class="back" href="#">← 返回实验室首页</a>
     ${bannerData ? renderBanner(bannerData) : ''}
     <h1>LLM 评测</h1>
     <div class="sub">共 ${reports.length} 份报告 · ${reports.reduce((a,r)=>a+r.case_count,0)} 个用例 · 最新 ${esc(reports[0].time)}</div>
