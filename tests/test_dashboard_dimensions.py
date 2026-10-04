@@ -240,8 +240,15 @@ class TestSingleSourceOfTruth:
         assert "function dimensionSummary" in app.PAGE
 
     def test_banner_goes_through_the_aggregator(self) -> None:
-        """banner 必须从 dimensionSummary 取数，不再自己读 dimensions 段。"""
-        assert "dimensionSummary(currDoc, representative)" in app.PAGE
+        """banner 必须从 dimensionSummary 取数，不再自己读 dimensions 段。
+
+        多模型时逐个真实模型都算一遍（取最低的那个并标出模型名），
+        所以现在是循环里的 ``dimensionSummary(currDoc, row.model)``。
+        """
+        assert "dimensionSummary(currDoc, row.model)" in app.PAGE
+        assert "dimensionSummary(currDoc, representative)" not in app.PAGE, (
+            "「挑一个代表模型」的旧写法已废弃：多模型的成绩要都写出来，谁弱要标得清"
+        )
         assert "findCandidates(currDoc.dimensions)" not in app.PAGE
 
     def test_dimension_order_is_injected(self) -> None:

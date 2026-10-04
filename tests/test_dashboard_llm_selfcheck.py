@@ -94,7 +94,8 @@ class TestListRendering:
         body = app.PAGE[app.PAGE.index("async function renderList"):]
         assert "reports.indexOf(r)" in body, "折叠后必须按全量列表定位序号，不能就地重排编号"
 
-    def test_total_count_unchanged(self) -> None:
-        """「共 N 份报告」仍取全量：自检算在总数里。"""
+    def test_total_count_self_consistent(self) -> None:
+        """统计行：真实 X 份 + 自检 Y 次 = 全量报告数（两个数字必须对得上）。"""
         body = app.PAGE[app.PAGE.index("async function renderList"):]
-        assert "共 ${reports.length} 份报告" in body, "总数口径被改动了"
+        assert "真实评测报告 ${main.length} 份" in body, "统计行要给出真实评测报告份数"
+        assert "框架自检 ${selfChecks.length} 次" in body, "统计行要给出自检次数"
