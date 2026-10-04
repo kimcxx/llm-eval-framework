@@ -1197,6 +1197,14 @@ function pickScoringReport(reports) {
   return (reports || []).find(r => modelsOf(r).some(x => !isMockModel(x.model))) || null;
 }
 
+// 「框架自检报告」：报告里**所有**模型都是 mock-*（cd.yml 每次合并后自动跑的管道心跳）。
+// 它是「评测框架自己还活着」的证据，不是模型成绩，逐条占行会把真报告挤下去。
+// 含真实模型的报告哪怕也带 mock-baseline 对照行，都不算自检。
+function isSelfCheckReport(r) {
+  const ms = modelsOf(r);
+  return ms.length > 0 && ms.every(x => isMockModel(x.model));
+}
+
 // 门户页（空 hash）：两层评测各一张入口卡，等大并排。
 // 每张卡三段式：被测对象 / 怎么测 / 最新成绩——访问者一眼看明白测的是谁、怎么测、结果如何。
 async function renderPortal(reports) {
@@ -1301,6 +1309,10 @@ async function renderList(reports) {
     : [topRate];
   // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
   const bannerData = await computeBannerData(reports);
+  // 列表只展示含真实模型的报告；纯 mock 的自检报告折叠到底部一行统计。
+  // 报告编号仍按全量 reports 的序号走（#63 永远是 #63），折叠不会让编号漂移。
+  const selfChecks = reports.filter(isSelfCheckReport);
+  const main = reports.filter(r => !isSelfCheckReport(r));
   $app.innerHTML = `
     <a class="back" href="#">← 返回实验室首页</a>
     ${bannerData ? renderBanner(bannerData) : ''}
@@ -1338,7 +1350,8 @@ async function renderList(reports) {
     <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>${hasStability ? '稳定率 / 通过率' : '通过率'}</th><th>P95 延迟</th></tr>
-      ${reports.map((r, i) => {
+      ${main.map((r) => {
+        const i = reports.indexOf(r);
         const multi = isMultiModel(r);
         const modelCell = multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model);
         const totalCell = caseCountText(r);
@@ -1363,6 +1376,24 @@ async function renderList(reports) {
       }).join('')}
     </table>
     ${hasStability ? `<div class="hint" style="padding:10px 12px 0">「稳定性测试」= 每条用例重复跑 N 次，用例列显示「单模型用例数 × 重复次数」，通过率列显示<b>稳定率</b>（要求 N 次全过的严格通过率见报告详情）；「回归测试」= 每条用例跑 1 次。</div>` : ''}
+    ${selfChecks.length ? `
+    <details style="margin-top:12px; border-top:1px solid rgba(42,54,80,.4); padding-top:10px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13px">另有 ${selfChecks.length} 次框架自检 ✓（管道心跳，非模型成绩）· 展开</summary>
+      <table style="margin-top:10px">
+        <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过率</th></tr>
+        ${selfChecks.map((r) => {
+          const multi = isMultiModel(r);
+          return `
+        <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
+          <td>#${reports.length - reports.indexOf(r)} ${typeBadge(r)} <span class="badge">${r.tag || 'run'}</span></td>
+          <td class="catname">${esc(r.time)}</td>
+          <td>${multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model)}</td>
+          <td>${caseCountText(r)}</td>
+          ${multi ? `<td>${multiCell(r, x => rateInner(listRate(r, x)))}</td>` : rateCell(listRate(r, r))}
+        </tr>`;
+        }).join('')}
+      </table>
+    </details>` : ''}
     </div>`;
 }
 
