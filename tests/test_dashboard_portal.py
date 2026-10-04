@@ -62,10 +62,13 @@ class TestPortalCardContent:
         for label in ("被测对象", "怎么测", "最新成绩"):
             assert app.PAGE.count(f"sec('{label}'") >= 2, f"{label} 段应在两张卡上都出现"
 
-    def test_intro_names_the_subjects(self) -> None:
-        """简介必须点名：deepseek-chat / deepseek-pro / smolagents ToolCallingAgent。"""
-        for name in ("deepseek-chat", "deepseek-pro", "smolagents ToolCallingAgent"):
-            assert name in app.PAGE, f"简介段缺少被测对象名：{name}"
+    def test_intro_names_the_agent_subject(self) -> None:
+        """简介必须点名被测的 Agent：smolagents ToolCallingAgent。"""
+        assert "smolagents ToolCallingAgent" in app.PAGE, "简介段缺少 Agent 被测对象名"
+
+    def test_intro_model_names_come_from_data(self) -> None:
+        """简介里的模型名来自成绩源数据，不是写死的字面量（别人换了模型就成假话）。"""
+        assert "横向对比 ${modelsHtml}" in app.PAGE, "简介段要用动态模型名单"
 
 
 class TestPortalPositioning:
@@ -123,10 +126,12 @@ class TestScoringSource:
     """模型层成绩来源：跳过 mock-only 报告（CD 冒烟的假模型不能当成绩）。"""
 
     def test_scoring_report_skips_mock(self) -> None:
-        assert "function pickScoringReport(reports)" in app.PAGE
-        body = app.PAGE[app.PAGE.index("function pickScoringReport"):]
+        assert "function scoringReports(reports)" in app.PAGE, "要有一个共用的成绩源筛选函数"
+        body = app.PAGE[app.PAGE.index("function scoringReports"):]
         body = body[:body.index("\n}")]
         assert "isMockModel" in body, "选成绩报告时必须排除 mock-* 对照组"
+        assert "function pickScoringReport(reports)" in app.PAGE
+        assert "scoringReports(reports)[0]" in app.PAGE, "pickScoringReport 必须复用同一份实现"
 
     def test_score_rows_filter_mock(self) -> None:
         body = app.PAGE[app.PAGE.index("async function renderPortal"):]

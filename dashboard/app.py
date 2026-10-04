@@ -1010,9 +1010,12 @@ function dimensionSummary(doc, model) {
 
 // 首页最顶部"大字结论"banner：复用现有 api/reports.json + api/report/{file}，不加新接口
 async function computeBannerData(reports) {
-  if (!reports || !reports.length) return null;
-  const curr = reports[0];
-  const base = reports[1] || null;
+  // 数据源 = 成绩源报告序列（含真实模型的最新一份），与门户卡片同源。
+  // 用 reports[0] 会取到 cd.yml 的自检报告（最新但全是 mock），页头就成了假数字。
+  const pool = scoringReports(reports);
+  if (!pool.length) return null;      // 一份真实报告都没有 → banner 不渲染，不拿 mock 充数
+  const curr = pool[0];
+  const base = pool[1] || null;
 
   // 静默 fetch；失败让 banner 不显示而不是让首页崩
   const safeFetchDoc = (entry) => entry
@@ -1023,65 +1026,64 @@ async function computeBannerData(reports) {
 
   const [currDoc, baseDoc] = await Promise.all([safeFetchDoc(curr), safeFetchDoc(base)]);
 
-  // 代表模型：优先真实模型（名字不以 mock- 开头）；全 mock / 无 model_rows 时退到 entry.model
-  const rows = curr.model_rows || [];
-  const real = rows.find(r => r && r.model && !r.model.startsWith('mock-'));
-  const representative = (real && real.model) || curr.model;
-
-  const repRateRow = rows.find(r => r && r.model === representative);
-  const currRate = (repRateRow && typeof repRateRow.pass_rate === 'number') ? repRateRow.pass_rate : curr.pass_rate;
-
-  // base 报告里能找到同一模型才算"较上次"，否则显示 "—"
-  let baseRate = null;
-  if (base) {
-    const baseRows = base.model_rows || [];
-    if (baseRows.some(r => r && r.model === representative)) {
-      const r = baseRows.find(x => x.model === representative);
-      baseRate = (r && typeof r.pass_rate === 'number') ? r.pass_rate : null;
+  // 所有真实模型的成绩都写出来，不再只挑一个「代表模型」——多模型的价值就在对比
+  const realRows = modelsOf(curr).filter(r => !isMockModel(r.model));
+  const models = realRows.map(r => {
+    const rate = (r && typeof r.pass_rate === 'number') ? r.pass_rate : null;
+    // base 报告里能找到同一模型才算「较上次」，否则显示 —
+    let deltaPt = null;
+    if (base) {
+      const b = modelsOf(base).find(x => x.model === r.model);
+      if (b && typeof b.pass_rate === 'number' && rate != null) deltaPt = (rate - b.pass_rate) * 100;
     }
-  }
-  const deltaPt = baseRate == null ? null : (currRate - baseRate) * 100;
+    return { model: r.model, rate: rate == null ? curr.pass_rate : rate, deltaPt };
+  });
 
   // 跨次对比复用 diffCases（已有 helper）
   const diff = (baseDoc && currDoc) ? diffCases(currDoc.cases || [], baseDoc.cases || []) : null;
   const regressed = diff ? diff.regressed.length : 0;
   const fixed = diff ? diff.fixed.length : 0;
 
-  // 最弱维度：走 dimensionSummary（categories 重算优先），与首页速览同一口径。
+  // 最弱维度：走 dimensionSummary（categories 重算优先），与速览同一口径。
   // 不能直接读 currDoc.dimensions —— 那是报告生成时的旧口径快照。
+  // 多模型时逐个真实模型都算一遍，取最低的那个并标出模型名（否则不知道是谁弱）。
   let weakest = null;
   if (currDoc) {
-    const dimRows = dimensionSummary(currDoc, representative);
-    const pool = dimRows.filter(d => d.dimension !== 'untagged');
-    const usable = pool.length ? pool : dimRows;
-    if (usable.length) {
+    for (const row of realRows) {
+      const dimRows = dimensionSummary(currDoc, row.model);
+      const dimPool = dimRows.filter(d => d.dimension !== 'untagged');
+      const usable = dimPool.length ? dimPool : dimRows;
+      if (!usable.length) continue;
       const w = usable.reduce((a, b) => (a.pass_rate <= b.pass_rate ? a : b));
-      weakest = { label: w.label, rate: w.pass_rate };
+      if (!weakest || w.pass_rate < weakest.rate) {
+        weakest = { label: `${row.model} · ${w.label}`, rate: w.pass_rate };
+      }
     }
   }
 
-  return { model: representative, currRate, baseRate, deltaPt, regressed, fixed, weakest, hasBase: !!base };
+  return { time: curr.time, models, regressed, fixed, weakest, hasBase: !!base };
 }
 
 function renderBanner(data) {
   if (!data) return '';
-  const rateText = (data.currRate * 100).toFixed(1) + '%';
-  let deltaHtml;
-  if (data.deltaPt == null) {
-    deltaHtml = '<span class="delta-na">—</span>';
-  } else {
-    const cls = data.deltaPt > 0 ? 'delta-up' : (data.deltaPt < 0 ? 'delta-down' : 'delta-na');
-    const sign = data.deltaPt > 0 ? '+' : '';
-    deltaHtml = `<span class="${cls}">${sign}${data.deltaPt.toFixed(1)} pt</span>`;
-  }
+  // 每个真实模型一行：「模型名 93.9%（较上次 +0.5 pt）」，不是区间——区间把对比藏起来了
+  const deltaHtml = (d) => {
+    if (d == null) return '<span class="delta-na">—</span>';
+    const cls = d > 0 ? 'delta-up' : (d < 0 ? 'delta-down' : 'delta-na');
+    const sign = d > 0 ? '+' : '';
+    return `<span class="${cls}">${sign}${d.toFixed(1)} pt</span>`;
+  };
+  const modelsHtml = (data.models || []).map(m =>
+    `<b style="color:var(--accent)">${esc(m.model)}</b> `
+    + `<span class="big" style="color:${rateColor(m.rate)}">${(m.rate * 100).toFixed(1)}%</span>`
+    + `（较上次 ${deltaHtml(m.deltaPt)}）`
+  ).join(' <span class="catname">/</span> ');
   const weakestHtml = data.weakest
     ? `${esc(data.weakest.label)} <b>${(data.weakest.rate * 100).toFixed(1)}%</b>`
     : '<span class="delta-na">—</span>';
   return `
     <div class="banner">
-      最新报告 <b style="color:var(--accent)">${esc(data.model)}</b>
-      <span class="big" style="color:${rateColor(data.currRate)}">${rateText}</span>
-      ，较上次 ${deltaHtml}
+      最新真实评测 · ${esc(data.time || '')}：${modelsHtml}
       ；回归 <b style="color:var(--bad)">${data.regressed}</b> 条 / 修复 <b style="color:var(--ok)">${data.fixed}</b> 条
       ；最弱维度：${weakestHtml}
     </div>`;
@@ -1193,8 +1195,23 @@ const fmtTime = t => (t && String(t).length >= 13)
 // CD 冒烟报告只有 mock-baseline（管道自检的假模型），拿它当成绩会把「mock 基线」
 // 显示成实验室的结论——那是给访问者看的第一屏，误导最严重。mock-only 的报告
 // 只计入「共 N 份报告」，不进成绩。
+// 成绩源报告序列（按时间倒序）：只保留含真实模型（非 mock-*）的报告。
+// 门户卡片、#llm 页头（banner / 统计行 / 统计卡）**共用这一个选源**——
+// 两处各算一套就会出现「门户看真实模型、#llm 页头看 mock」的撕裂（dimensionSummary 的教训）。
+function scoringReports(reports) {
+  return (reports || []).filter(r => modelsOf(r).some(x => !isMockModel(x.model)));
+}
+
 function pickScoringReport(reports) {
-  return (reports || []).find(r => modelsOf(r).some(x => !isMockModel(x.model))) || null;
+  return scoringReports(reports)[0] || null;
+}
+
+// 「框架自检报告」：报告里**所有**模型都是 mock-*（cd.yml 每次合并后自动跑的管道心跳）。
+// 它是「评测框架自己还活着」的证据，不是模型成绩，逐条占行会把真报告挤下去。
+// 含真实模型的报告哪怕也带 mock-baseline 对照行，都不算自检。
+function isSelfCheckReport(r) {
+  const ms = modelsOf(r);
+  return ms.length > 0 && ms.every(x => isMockModel(x.model));
 }
 
 // 门户页（空 hash）：两层评测各一张入口卡，等大并排。
@@ -1207,6 +1224,16 @@ async function renderPortal(reports) {
   const scoring = pickScoringReport(reports);
   const realRows = scoring ? modelsOf(scoring).filter(x => !isMockModel(x.model)) : [];
   const realNames = realRows.map(x => x.model);
+  // 模型名单的**唯一数据源**：卡片「被测对象」、简介段、局限块「规模」三处都从这里取。
+  // 别人 clone 后配自己的模型跑评测，这三处跟着数据走；写死我们的模型名就成了假话。
+  const noRealModels = '<span class="pwhen">（暂无真实模型数据）</span>';
+  const modelsHtml = realNames.length
+    ? realNames.map(n => `<b>${esc(n)}</b>`).join(' / ')
+    : '<b>多个大模型</b>';
+  // 局限块那行的口径是「N 个模型（a / b）」，要带数量，所以另拼一份（仍是同一 realNames）
+  const scaleModels = realNames.length
+    ? `${realNames.length} 个模型（${realNames.map(esc).join(' / ')}）`
+    : '模型（暂无真实模型数据）';
   const llmScore = scoring ? `
       ${sec('最新成绩', realRows.map(x =>
         `<span class="pchip">${esc(x.model)} <b class="rate" style="color:${rateColor(listRate(scoring, x))}">${pct(listRate(scoring, x))}</b></span>`
@@ -1216,7 +1243,7 @@ async function renderPortal(reports) {
       <div class="ptitle">模型层评测</div>
       ${sec('被测对象', realNames.length
         ? realNames.map(n => `<b>${esc(n)}</b>`).join(' vs ')
-        : '<span class="pwhen">（暂无真实模型数据）</span>')}
+        : noRealModels)}
       ${sec('怎么测', '同一用例集横向对比 · 接入 CI 回归门禁')}
       ${llmScore}`;
 
@@ -1250,7 +1277,7 @@ async function renderPortal(reports) {
   $app.innerHTML = `
     <h1>LLM &amp; Agent 评测实验室</h1>
     <div class="plead">一个 AI 测试方向的自学实战项目 —— 不是生产级框架，但评测闭环的每个环节都真实跑通。</div>
-    <div class="sub">模型层：用同一套用例集横向对比 <b>deepseek-chat</b> 与 <b>deepseek-pro</b> 的能力、稳定性与工程成本，并接入 CI 回归门禁；
+    <div class="sub">模型层：用同一套用例集横向对比 ${modelsHtml} 的能力、稳定性与工程成本，并接入 CI 回归门禁；
       Agent 层：一个 <b>smolagents ToolCallingAgent</b>，大脑 ${brainsHtml} · 2 个真实回归工具，
       10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
     <div class="portal">
@@ -1268,7 +1295,7 @@ async function renderPortal(reports) {
       <div class="pscopegrid">
         <div class="pscopeitem">
           <div class="plabel">规模</div>
-          <div class="pvalue">2 个模型（deepseek-chat / deepseek-pro）、98 条模型层用例、
+          <div class="pvalue">${scaleModels}、98 条模型层用例、
             10 道 Agent 任务、2 个工具、单轮任务、单一模型供应商。</div>
         </div>
         <div class="pscopeitem">
@@ -1293,24 +1320,41 @@ async function renderList(reports) {
   const ciAllPass = hasTests && tests.failed === 0 && tests.errors === 0;
   // 列表里只要有一份稳定性报告，通过率列就要改成「稳定率 / 通过率」双含义表头
   const hasStability = (reports || []).some(isStability);
-  // 顶部「最新通过率」卡片同样跟随：最新报告是稳定性测试时显示稳定率，
-  // 否则列表与卡片两个数打架（一个 75.6% 一个 60.0%）反而看不懂
-  const topRate = reports[0] ? listRate(reports[0], reports[0]) : 0;
-  const topRates = (reports[0] && isMultiModel(reports[0]))
-    ? reports[0].model_rows.map(x => listRate(reports[0], x))
-    : [topRate];
   // 顶部 banner：复用现有 api 接口；数据计算是异步的但已与 tests.json 并行 fetch
   const bannerData = await computeBannerData(reports);
+  // 列表只展示含真实模型的报告；纯 mock 的自检报告折叠到底部一行统计。
+  // 报告编号仍按全量 reports 的序号走（#63 永远是 #63），折叠不会让编号漂移。
+  const selfChecks = reports.filter(isSelfCheckReport);
+  const main = reports.filter(r => !isSelfCheckReport(r));
+  // 页头所有数字都只看成绩源报告（含真实模型的最新一份），与门户卡片同源。
+  // 取 reports[0] 会取到 cd.yml 的自检报告——那是最新的，但里面只有 mock。
+  const scoring = pickScoringReport(reports);
+  const scoringRows = scoring ? modelsOf(scoring).filter(x => !isMockModel(x.model)) : [];
+  // 用例集口径取成绩源报告覆盖的去重用例数与数据集数：跨报告累计 case_count
+  // （同一批用例跑几十遍的累加）对外行是噪音，也不能反映「这套题有多大」。
+  // case_count 是「用例 × 模型」的行数，除以模型数才是去重用例数（294 / 3 = 98）。
+  const caseCount = scoring
+    ? Math.round((scoring.case_count || 0) / Math.max(modelsOf(scoring).length, 1))
+    : 0;
+  const datasetCount = (scoring && scoring.datasets)
+    ? (Array.isArray(scoring.datasets) ? scoring.datasets.length : Object.keys(scoring.datasets).length)
+    : 0;
   $app.innerHTML = `
     <a class="back" href="#">← 返回实验室首页</a>
     ${bannerData ? renderBanner(bannerData) : ''}
     <h1>LLM 评测</h1>
-    <div class="sub">共 ${reports.length} 份报告 · ${reports.reduce((a,r)=>a+r.case_count,0)} 个用例 · 最新 ${esc(reports[0].time)}</div>
+    <div class="sub">真实评测报告 ${main.length} 份 · 框架自检 ${selfChecks.length} 次${scoring ? ` · 最新真实评测 ${esc(scoring.time)}` : ' · 暂无真实评测'}</div>
     <div class="grid" style="margin-bottom:16px">
-      <div class="stat"><div class="k">报告数</div><div class="v">${reports.length}</div></div>
-      <div class="stat"><div class="k">单次最多用例</div><div class="v">${Math.max(...reports.map(r=>r.case_count))}</div></div>
-      <div class="stat"><div class="k">最新${isStability(reports[0]) ? '稳定率' : '通过率'}</div><div class="v" style="color:${rateColor(topRate)}">${topRates.length > 1 ? `${pct(Math.min(...topRates))} ~ ${pct(Math.max(...topRates))}` : pct(topRate)}</div></div>
-      <div class="stat"><div class="k">最新模型</div><div class="v" style="font-size:14px">${esc(isMultiModel(reports[0]) ? reports[0].models.join(' / ') : reports[0].model)}</div></div>
+      <div class="stat"><div class="k">真实评测报告</div><div class="v">${main.length}</div>
+        <div class="catname">自检 ${selfChecks.length} 次见列表底部</div></div>
+      <div class="stat"><div class="k">用例集</div><div class="v">${caseCount}</div>
+        <div class="catname">${datasetCount ? `${datasetCount} 个数据集` : '数据集信息缺失'}</div></div>
+      <div class="stat"><div class="k">最新成绩</div>
+        <div class="v" style="font-size:15px">${scoringRows.length
+          ? scoringRows.map(x => `<div>${esc(x.model)} <b style="color:${rateColor(listRate(scoring, x))}">${pct(listRate(scoring, x))}</b></div>`).join('')
+          : '<span class="catname">—</span>'}</div></div>
+      <div class="stat"><div class="k">成绩日期</div><div class="v" style="font-size:14px">${esc(scoring ? scoring.time : '—')}</div>
+        <div class="catname">${scoring ? '此后的更新为管道自检' : '尚无真实评测'}</div></div>
     </div>
     ${hasTests ? `
     <div class="card">
@@ -1338,7 +1382,8 @@ async function renderList(reports) {
     <div class="card"><div class="sub" style="margin:0">暂无 CI 测试数据（dashboard/data/tests-summary.json 不存在）</div></div>`}
     <div class="card"><table>
       <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过 / 失败</th><th>${hasStability ? '稳定率 / 通过率' : '通过率'}</th><th>P95 延迟</th></tr>
-      ${reports.map((r, i) => {
+      ${main.map((r) => {
+        const i = reports.indexOf(r);
         const multi = isMultiModel(r);
         const modelCell = multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model);
         const totalCell = caseCountText(r);
@@ -1363,6 +1408,24 @@ async function renderList(reports) {
       }).join('')}
     </table>
     ${hasStability ? `<div class="hint" style="padding:10px 12px 0">「稳定性测试」= 每条用例重复跑 N 次，用例列显示「单模型用例数 × 重复次数」，通过率列显示<b>稳定率</b>（要求 N 次全过的严格通过率见报告详情）；「回归测试」= 每条用例跑 1 次。</div>` : ''}
+    ${selfChecks.length ? `
+    <details style="margin-top:12px; border-top:1px solid rgba(42,54,80,.4); padding-top:10px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13px">另有 ${selfChecks.length} 次框架自检 ✓（管道心跳，非模型成绩）· 展开</summary>
+      <table style="margin-top:10px">
+        <tr><th>报告</th><th>时间</th><th>模型</th><th>用例</th><th>通过率</th></tr>
+        ${selfChecks.map((r) => {
+          const multi = isMultiModel(r);
+          return `
+        <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
+          <td>#${reports.length - reports.indexOf(r)} ${typeBadge(r)} <span class="badge">${r.tag || 'run'}</span></td>
+          <td class="catname">${esc(r.time)}</td>
+          <td>${multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model)}</td>
+          <td>${caseCountText(r)}</td>
+          ${multi ? `<td>${multiCell(r, x => rateInner(listRate(r, x)))}</td>` : rateCell(listRate(r, r))}
+        </tr>`;
+        }).join('')}
+      </table>
+    </details>` : ''}
     </div>`;
 }
 
@@ -2119,6 +2182,9 @@ def _load_reports():
             "model_rows": model_rows,
             "case_count": data.get("case_count", 0),
             "repeat": repeat,
+            # 数据集名单：#llm 页头「用例集 · N 个数据集」卡片要用，
+            # 让前端不必为了数数据集再回源拉一次报告文档。
+            "datasets": data.get("datasets", []),
             "passed": summary.get("passed", 0),
             "failed": summary.get("failed", 0),
             "pass_rate": summary.get("pass_rate", 0.0),
