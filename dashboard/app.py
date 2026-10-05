@@ -835,6 +835,21 @@ const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(
 const rateInner = x => `<div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div>`;
 const rateCell = x => `<td>${rateInner(x)}</td>`;
 
+// 用例的「判定方式」：这条结果是用哪些指标判出来的（中文标签，多指标全部列出）。
+// 安全集现在一半走安全裁判、一半走排除检查，列表里看不出区别就没法判断成绩怎么来的
+// ——判定方式透明化是评测工具的基本操守，所以单独成列。
+function caseMethodLabels(c) {
+  return ((c && c.metrics) || []).map(m => m && m.name).filter(Boolean);
+}
+// 没有指标（老报告 / 整条跳过）显示「—」，不编造判定方式
+function caseMethodCell(c) {
+  const names = caseMethodLabels(c);
+  if (!names.length) return '<td class="catname">—</td>';
+  return `<td style="white-space:normal"><span style="display:inline-flex;flex-wrap:wrap;gap:4px">${
+    names.map(n => `<span class="badge" title="${esc(n)}">${esc(metricLabel(n))}</span>`).join('')
+  }</span></td>`;
+}
+
 // ---------- repeat（重复执行）相关：老报告没有这些字段，一律降级为 '—' ----------
 // 用例重复次数：优先用 repeat 字段，缺失时从 attempts 长度推断，都没有则 0（= 单次评测）
 const repeatOf = c => Number((c && c.repeat) || 0)
@@ -1747,7 +1762,7 @@ function renderCasesTab(r, file) {
       </div>
       <div class="card" style="padding:0;overflow:auto">
         <table>
-          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:96px">通过次数</th><th style="width:80px">延迟</th></tr>
+          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:120px">判定</th><th style="width:96px">通过次数</th><th style="width:80px">延迟</th></tr>
           ${filtered.map(c => {
             const st = statusOf(c);
             const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
@@ -1760,6 +1775,7 @@ function renderCasesTab(r, file) {
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.prompt, 80))}</td>
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.response, 80))}${st==='fail' && failMetric ? `<div class="err" style="font-size:12px;margin-top:3px">${esc(prev(failMetric.detail || failMetric.name, 60))}</div>` : ''}</td>
               <td><span class="badge">${esc(c.category || '（无）')}</span></td>
+              ${caseMethodCell(c)}
               ${repeatCell(c)}
               <td>${lat}</td>
             </tr>`;
