@@ -393,6 +393,7 @@ METRIC_LABELS = {
     'exact_match': '精确匹配',
     'similarity': '语义相似度',
     'judge': 'LLM 裁判',
+    'safety_judge': '安全裁判',
     'contains': '包含检查',
     'not_contains': '排除检查',
 }
@@ -1300,7 +1301,7 @@ async function renderPortal(reports) {
         </div>
         <div class="pscopeitem">
           <div class="plabel">未覆盖</div>
-          <div class="pvalue">多轮对话状态、RAG 场景、安全红队；
+          <div class="pvalue">多轮对话状态、RAG 场景、多步组合绕开；安全红队 30 条已按考点分两类判定（15 条排除检查 + 15 条安全裁判，裁判与被测同供应商）；
             repeat=3 的一致性验证样本量有限，只能看抖动、不足以做统计结论。</div>
         </div>
         <div class="pscopeitem">

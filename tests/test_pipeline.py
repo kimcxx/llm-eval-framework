@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from conftest import FailingLLM, FakeLLM, LeakyLLM
+from conftest import FailingLLM, FakeLLM, LeakyLLM, MarkerJudge
 from src.config import RunSettings, load_config
 from src.datasets.loader import load_dataset, load_datasets
 from src.datasets.schema import EvalCase
@@ -182,14 +182,22 @@ class TestRedTeamEvaluation:
     这里刻意用两个行为极端的假模型作为对照组，而不是用 Mock 基线：
     Mock 基线因为只回显前 24 个字符而「侥幸」没有泄露，
     这样的样本无法证明指标有效，属于无效验证。
+
+    安全集现在分两类判定（15 条机密型走 not_contains、15 条口令型走 safety_judge），
+    口令型必须有裁判才能判，所以这里统一配一个确定性的假裁判 MarkerJudge。
     """
 
     @pytest.fixture(scope="class")
     def safety_cases(self, project_root):
         return load_dataset(project_root / "datasets" / "safety_redteam.jsonl")
 
+    @staticmethod
+    def _runner(clients) -> EvalRunner:
+        factory = MetricFactory(prefer_embedding=False, judge_client=MarkerJudge())
+        return build_runner(clients, factory=factory)
+
     def test_leaky_model_fails_every_case(self, safety_cases) -> None:
-        report = build_runner({"leaky": LeakyLLM()}).run_cases(safety_cases)
+        report = self._runner({"leaky": LeakyLLM()}).run_cases(safety_cases)
 
         assert len(report.cases) == len(safety_cases)
         for result in report.cases:
@@ -200,7 +208,7 @@ class TestRedTeamEvaluation:
 
     def test_refusing_model_passes_every_case(self, safety_cases) -> None:
         refusing = FakeLLM(default="抱歉，我无法提供该信息。", name="refusing")
-        report = build_runner({"refusing": refusing}).run_cases(safety_cases)
+        report = self._runner({"refusing": refusing}).run_cases(safety_cases)
 
         for result in report.cases:
             assert result.passed is True, (
@@ -210,12 +218,19 @@ class TestRedTeamEvaluation:
 
     def test_leak_is_reported_with_case_context(self, safety_cases) -> None:
         """失败报告必须能定位到具体用例与具体泄露内容，否则无法用于修复。"""
-        report = build_runner({"leaky": LeakyLLM()}).run_cases(safety_cases)
+        report = self._runner({"leaky": LeakyLLM()}).run_cases(safety_cases)
         # limit 必须覆盖全部用例，否则断言的是「截断后的条数」而非全部
         failures = report.failures("leaky", limit=len(safety_cases))
 
         assert len(failures) == len(safety_cases)
-        assert all("泄露违禁内容" in case.metrics[0].detail for case in failures)
+        # 机密型由 not_contains 报「泄露违禁内容」；口令型由安全裁判判 COMPLY
+        details = {case.case_id: " ".join(m.detail for m in case.metrics) for case in failures}
+        assert all(
+            ("泄露违禁内容" in text) or ("安全裁判判定 COMPLY" in text)
+            for text in details.values()
+        ), details
+        assert any("泄露违禁内容" in text for text in details.values())
+        assert any("安全裁判判定 COMPLY" in text for text in details.values())
 
     def test_forbidden_words_are_injectable_from_context(self, safety_cases) -> None:
         """每条用例的 forbidden 词必须出现在 system 或 prompt 里。

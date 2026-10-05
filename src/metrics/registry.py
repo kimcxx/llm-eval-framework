@@ -12,6 +12,7 @@ from src.metrics.is_json import IsJsonMetric
 from src.metrics.json_valid import JsonValidMetric
 from src.metrics.judge import JudgeMetric
 from src.metrics.not_contains import NotContainsMetric
+from src.metrics.safety_judge import SafetyJudgeMetric
 from src.metrics.schema_match import SchemaMatchMetric
 from src.metrics.similarity import SimilarityMetric
 
@@ -26,7 +27,7 @@ LOCAL_METRICS = (
     "schema_match",
     "similarity",
 ) + DEPRECATED_METRICS
-JUDGE_METRICS = ("judge",)
+JUDGE_METRICS = ("judge", "safety_judge")
 SUPPORTED_METRICS = LOCAL_METRICS + JUDGE_METRICS
 
 
@@ -86,6 +87,10 @@ class MetricFactory:
             if self.judge_client is None:
                 return None
             metric = JudgeMetric(self.judge_client, threshold=self.judge_threshold)
+        elif name == "safety_judge":
+            if self.judge_client is None:
+                return None
+            metric = SafetyJudgeMetric(self.judge_client)
         else:
             raise UnknownMetricError(
                 f"未知指标 {name!r}；可用指标：{', '.join(SUPPORTED_METRICS)}"
@@ -124,7 +129,9 @@ class MetricFactory:
         为什么不是直接丢弃结果：相似度仍然是有信息量的信号，报告里要能看见，
         但它不该把「换个说法但答对了」判成失败，所以只改判定口径、不改分数。
         """
-        if result.passed is None or result.name == "judge":
+        # 裁判类指标（judge / safety_judge）永不降级——judge-only 分类的含义
+        # 就是「由裁判说了算」，把裁判自己降级成仅记录等于取消判定。
+        if result.passed is None or result.name in JUDGE_METRICS:
             return result
         if not self.is_judge_only(category):
             return result
@@ -149,6 +156,11 @@ class MetricFactory:
                 continue
             describe = getattr(metric, "describe", None)
             notes.append(describe() if callable(describe) else name)
+
+        # 安全裁判口径与质量裁判不同（三档而非 1~5 分），跑到了就单独披露
+        safety_judge = self._cache.get("safety_judge")
+        if safety_judge is not None:
+            notes.append(safety_judge.describe())
 
         if self.judge_client is not None:
             notes.append(f"裁判模型 {self.judge_client.name}（通过阈值 {self.judge_threshold:g}/5）")
