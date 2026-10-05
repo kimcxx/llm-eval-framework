@@ -1372,6 +1372,7 @@ async function renderList(reports) {
       <div class="stat"><div class="k">成绩日期</div><div class="v" style="font-size:14px">${esc(scoring ? scoring.time : '—')}</div>
         <div class="catname">${scoring ? '此后的更新为管道自检' : '尚无真实评测'}</div></div>
     </div>
+    ${compareCard(reports)}
     ${hasTests ? `
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap">
@@ -1443,6 +1444,163 @@ async function renderList(reports) {
       </table>
     </details>` : ''}
     </div>`;
+  bindCompare(reports);
+}
+
+// ============================== #llm 报告维度对比 ============================== //
+// 想看「同维度的报告对比」：9/23 全量回归 vs 之后某次真实评测，每个维度谁涨谁跌
+// 一眼看清，不用开两个详情页左右对照。
+//
+// 口径全部复用现成实现，不另起炉灶（dimensionSummary 的教训）：
+//   * 选源 = scoringReports()（只含真实模型的报告，与 banner / 门户同源，mock 不进选择器）
+//   * 维度 = dimensionSummary()（categories 重算 → cases → dimensions 兜底）
+
+// 报告编号沿用列表口径：按全量序号 #N（自检报告也占位），不就地重排
+function reportNo(reports, r) {
+  const i = (reports || []).indexOf(r);
+  return i < 0 ? '' : `#${reports.length - i}`;
+}
+
+// 完整报告文档里的真实模型名（summary 段；mock-* 是对照组，不参与对比）
+function realModelsOfDoc(doc) {
+  return Array.from(new Set(
+    ((doc && doc.summary) || []).map(x => x && x.model).filter(m => m && !isMockModel(m))
+  ));
+}
+
+// 维度排序：与 dimensionSummary 同序（DIMENSION_ORDER 优先，未收录的排最后）
+const dimOrderIndex = d => {
+  const order = Array.isArray(DIMENSION_ORDER) ? DIMENSION_ORDER : [];
+  const i = order.indexOf(d);
+  return i < 0 ? order.length : i;
+};
+
+// 两份报告的维度对比：**同名模型才互比**（chat 对 chat、pro 对 pro），按模型分组。
+// 返回 [{model, inBoth, rows:[{label, a, b, deltaPt}]}]
+//   a / b 为 0~1 的通过率，缺一侧为 null（渲染成「—」）；
+//   deltaPt = (b - a) * 100，即「B 相对 A 的涨跌（百分点）」，缺一侧为 null。
+function compareReports(aDoc, bDoc) {
+  const modelsA = realModelsOfDoc(aDoc), modelsB = realModelsOfDoc(bDoc);
+  const models = modelsA.concat(modelsB.filter(m => !modelsA.includes(m)));
+  return models.map(m => {
+    const ra = new Map(dimensionSummary(aDoc, m).map(x => [x.dimension, x]));
+    const rb = new Map(dimensionSummary(bDoc, m).map(x => [x.dimension, x]));
+    const dims = Array.from(new Set([...ra.keys(), ...rb.keys()]))
+      .sort((x, y) => (dimOrderIndex(x) - dimOrderIndex(y)) || String(x).localeCompare(String(y)));
+    return {
+      model: m,
+      inBoth: modelsA.includes(m) && modelsB.includes(m),
+      rows: dims.map(d => {
+        const a = ra.get(d), b = rb.get(d);
+        return {
+          label: (a || b).label,
+          a: a ? a.pass_rate : null,
+          b: b ? b.pass_rate : null,
+          deltaPt: (a && b) ? (b.pass_rate - a.pass_rate) * 100 : null,
+        };
+      }),
+    };
+  });
+}
+
+// 差值列：带正负号，提升绿 / 回退红 / 不变灰（测试质量语义，与报告里其他颜色一致）
+function deltaCell(pt) {
+  if (pt == null) return '<td class="catname">—</td>';
+  const v = Math.abs(pt) < 0.05 ? 0 : pt;          // 浮点噪声压平，避免显示 -0.0
+  const color = v > 0 ? 'var(--ok)' : v < 0 ? 'var(--bad)' : 'var(--muted)';
+  const sign = v > 0 ? '+' : v < 0 ? '-' : '';
+  return `<td style="color:${color};font-weight:600">${sign}${Math.abs(v).toFixed(1)}</td>`;
+}
+
+// 默认对比哪两份：优先「维度覆盖最全的两份」（A 较早、B 较新）。
+// 直接取最新两份会撞上「全量报告 vs 只跑安全集的报告」——维度对不上就满屏「—」，
+// 第一眼看不出任何涨跌。覆盖维度最多的通常是同一套用例集的两次全量评测，
+// 正是「9/23 全量回归 vs 之后某次真实评测」这种想看的对比。
+function defaultComparePair(pool) {
+  const cover = r => ((r && r.dimension_coverage) || []).length;
+  const best = Math.max(...pool.map(cover));
+  const wide = pool.filter(r => cover(r) === best).slice(0, 2);   // pool 已按时间倒序
+  return wide.length === 2 ? [wide[1], wide[0]] : [pool[1], pool[0]];
+}
+
+// 对比入口：凑不够两份真实报告时只给文字提示，不拿 mock 凑数
+function compareCard(reports) {
+  const pool = scoringReports(reports);
+  if (pool.length < 2) {
+    return `
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px">报告维度对比</div>
+      <div class="catname">至少需要两份「含真实模型的评测报告」才能对比（当前 ${pool.length} 份）；
+        管道自检报告是框架心跳，不是模型成绩，不计入。</div>
+    </div>`;
+  }
+  const opts = sel => pool.map(r =>
+    `<option value="${esc(r.file)}" ${r === sel ? 'selected' : ''}>${esc(reportNo(reports, r))} ${esc(r.time)} · ${esc(r.tag || 'run')}</option>`
+  ).join('');
+  // 默认：A = 较早那份（基准），B = 较新那份（看涨了多少）
+  const [defA, defB] = defaultComparePair(pool);
+  return `
+    <div class="card" id="cmpCard">
+      <div style="font-weight:600;margin-bottom:4px">报告维度对比</div>
+      <div class="hint" style="margin-bottom:8px">同维度看两份真实评测报告谁涨谁跌。
+        <b>同名模型才互比</b>（deepseek-chat 对 deepseek-chat），模型对不上显示「—」；
+        差值 = B − A（百分点）。</div>
+      <div class="toolbar">
+        <span style="color:var(--muted)">报告A（基准）</span>
+        <select id="cmpA">${opts(defA)}</select>
+        <span style="color:var(--muted)">报告B（对比）</span>
+        <select id="cmpB">${opts(defB)}</select>
+        <span class="stat-inline" id="cmpStat"></span>
+      </div>
+      <div id="cmpBody"></div>
+    </div>`;
+}
+
+async function bindCompare(reports) {
+  const selA = document.getElementById('cmpA'), selB = document.getElementById('cmpB');
+  if (!selA || !selB) return;                    // 真实报告不足两份时没有选择器
+  const fetchDoc = async file => {
+    try { return await (await fetch('api/report/' + encodeURIComponent(file))).json(); }
+    catch (e) { return null; }
+  };
+  const metaOf = file => (reports || []).find(r => r.file === file) || {};
+
+  const run = async () => {
+    const body = document.getElementById('cmpBody'), stat = document.getElementById('cmpStat');
+    const [aDoc, bDoc] = await Promise.all([fetchDoc(selA.value), fetchDoc(selB.value)]);
+    if (!aDoc || !bDoc) {
+      body.innerHTML = '<div class="catname">报告加载失败（静态导出缺失或文件已删除）</div>';
+      return;
+    }
+    const aMeta = metaOf(selA.value), bMeta = metaOf(selB.value);
+    const groups = compareReports(aDoc, bDoc);
+    const rowCount = groups.reduce((n, g) => n + g.rows.length, 0);
+    stat.textContent = `${groups.length} 个模型 · ${rowCount} 个维度行`;
+    body.innerHTML = `
+      <div class="sub" style="margin-bottom:8px">
+        报告A（基准）：<b>${esc(reportNo(reports, aMeta))} ${esc(aMeta.time || '')}</b>
+        <code>${esc(selA.value)}</code>
+        ｜ 报告B（对比）：<b>${esc(reportNo(reports, bMeta))} ${esc(bMeta.time || '')}</b>
+        <code>${esc(selB.value)}</code>
+      </div>
+      ${groups.map(g => `
+        <div style="margin:10px 0 4px;font-weight:600">${esc(g.model)}${g.inBoth ? '' : ' <span class="badge">仅一份报告有此模型，无法对比</span>'}</div>
+        ${g.rows.length ? `
+        <table>
+          <tr><th>维度</th><th>报告A</th><th>报告B</th><th>差值（pt）</th></tr>
+          ${g.rows.map(r => `
+          <tr>
+            <td>${esc(r.label)}</td>
+            <td>${r.a == null ? '—' : pct(r.a)}</td>
+            <td>${r.b == null ? '—' : pct(r.b)}</td>
+            ${deltaCell(r.deltaPt)}
+          </tr>`).join('')}
+        </table>` : '<div class="catname">这两份报告里没有该模型的维度数据</div>'}`).join('')}
+      ${rowCount ? '' : '<div class="catname">两份报告都没有维度数据（老报告可能未记录 dimension / category）</div>'}`;
+  };
+  selA.onchange = run;
+  selB.onchange = run;
+  run();
 }
 
 // 详情页属性条：范围 × 重复次数 × 判定口径，三个正交属性并排列出。
