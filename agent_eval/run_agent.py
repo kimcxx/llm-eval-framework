@@ -30,6 +30,7 @@ try:
         build_model,
         collect_logs,
         dump_trajectory,
+        ensure_utf8_stdio,
         print_trajectory_summary,
     )
     from agent_eval.tools import calculator, get_eval_result  # noqa: E402
@@ -60,6 +61,8 @@ GOLDEN = {
 
 
 def main() -> int:
+    # 与 run_eval 同一套：终端编码钉成 utf-8，免得打印轨迹时被特殊字符崩掉
+    ensure_utf8_stdio()
     model = build_model()
     agent = ToolCallingAgent(
         tools=[calculator, get_eval_result],

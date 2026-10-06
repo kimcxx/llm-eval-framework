@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import json
 import operator
+import os
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,29 @@ from smolagents import tool
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS_DIR = PROJECT_ROOT / "reports"
 REPORT_GLOB = "report-full-regression-*.json"
+
+# ------------------------------------------------------------ 数据源（双模） ----
+# 评测时必须冻结数据源：工具若「读最新报告」，全量回归一更新，金标就悄悄过期
+# （10-04 那次正是如此：数字漂移，10 道题里 4 道变成莫名其妙的 fail）。
+# fixture 是**被测系统读的那份数据**，金标仍由人工独立标定，两者同源但职责不同。
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
+FIXTURE_PATH = FIXTURE_DIR / "eval_data_fixture.json"
+
+DATA_SOURCE_ENV = "AGENT_EVAL_DATA_SOURCE"
+SOURCE_FIXTURE = "fixture"   # 缺省：评测模式，读冻结的 fixture（可复现）
+SOURCE_LATEST = "latest"     # 显式开启：实时模式，读 reports/ 最新全量回归
+
+
+def data_source_mode() -> str:
+    """当前数据源模式。**缺省永远是 fixture**——实时模式必须显式开启。
+
+    「静默读最新」是这次 bug 的根因，所以开关做成：不设置 = 冻结，设置了才追新。
+    """
+    return (
+        SOURCE_LATEST
+        if os.environ.get(DATA_SOURCE_ENV, "").strip().lower() == SOURCE_LATEST
+        else SOURCE_FIXTURE
+    )
 
 # ---------------------------------------------------------------- 维度口径 ----
 # 与 src/runner/dimension.py 保持一致：维度按「测法」分，不按数据集分。
@@ -48,6 +72,10 @@ DIMENSION_LABELS: dict[str, str] = {
     "safety": "安全",
     "relevance": "相关性",
 }
+
+# 渲染顺序：两种数据源（fixture / 最新报告）都按这张表列可选维度，
+# 免得「该报告只有：…」这类文案因为遍历顺序不同而漂移。
+DIMENSION_ORDER: tuple[str, ...] = ("correctness", "instruction_following", "safety", "relevance")
 
 # 分类 → 维度。用来从 categories 段重算维度，见 _dimension_rows 的说明。
 CATEGORY_DIMENSION: dict[str, str] = {
@@ -221,12 +249,70 @@ def _dimension_rows(doc: dict[str, Any], model: str) -> dict[str, dict[str, int 
     return rows
 
 
+def _rows_from_fixture() -> tuple[dict[str, Any] | None, list[str] | None, str | None]:
+    """从 agent 专用 fixture 组装 ``{model: {dim: {total, passed, pass_rate}}}``。"""
+    if not FIXTURE_PATH.is_file():
+        return None, None, (
+            f"未找到 agent 评测专用 fixture：agent_eval/fixtures/{FIXTURE_PATH.name}"
+            "（请先跑 python agent_eval/fixtures/make_fixture.py 生成）"
+        )
+    try:
+        doc = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, None, f"fixture 读取/解析失败：{FIXTURE_PATH.name}（{exc}）"
+
+    rows_by_model: dict[str, Any] = {}
+    models: list[str] = []
+    for item in (doc.get("data") or []):
+        if not isinstance(item, dict):
+            continue
+        model = str(item.get("model") or "")
+        dim = str(item.get("dimension") or "")
+        if not model or not dim:
+            continue
+        if model not in rows_by_model:
+            rows_by_model[model] = {}
+            models.append(model)
+        total = int(item.get("total") or 0)
+        passed = int(item.get("passed") or 0)
+        rows_by_model[model][dim] = {
+            "total": total,
+            "passed": passed,
+            "pass_rate": passed / total if total else 0.0,
+        }
+    if not rows_by_model:
+        return None, None, f"fixture 里没有数据行：{FIXTURE_PATH.name}"
+    return rows_by_model, models, None
+
+
+def _rows_from_latest_report() -> tuple[dict[str, Any] | None, list[str] | None, str | None]:
+    """实时模式：读 reports/ 下最新全量回归（生产/演示用；评测不走这条路）。"""
+    doc, error = _load_latest_report()
+    if error:
+        return None, None, error
+    models = _real_models(doc)
+    return {m: _dimension_rows(doc, m) for m in models}, models, None
+
+
+def _resolve_data() -> tuple[dict[str, Any] | None, list[str] | None, str | None]:
+    """按当前模式取数据，返回 ``(rows_by_model, models, error)``。
+
+    **两条路在这里收敛成同一个结构**，工具的渲染逻辑因此只有一份——
+    fixture 与实时模式的输出必然一致（另有测试逐字节钉住）。
+    """
+    if data_source_mode() == SOURCE_LATEST:
+        return _rows_from_latest_report()
+    return _rows_from_fixture()
+
+
 @tool
 def get_eval_result(model_name: str, dimension: str) -> str:
     """查询 LLM 评测报告里，某个模型在某个能力维度上的表现。
 
-    返回该维度的**通过率、题数、失败数**。数据源是 reports/ 下最新的
-    report-full-regression-*.json（全量回归报告）。
+    返回该维度的**通过率、题数、失败数**。数据源**缺省是冻结的 agent 评测专用
+    fixture**（agent_eval/fixtures/eval_data_fixture.json，数据日期 2026-09-23），
+    评测成绩因此跨时间、跨大脑可比；显式设置 AGENT_EVAL_DATA_SOURCE=latest 时才读
+    reports/ 下最新的全量回归报告（实时查询能力，生产/演示用）。
 
     Args:
         model_name: 被测模型名，只能是 "deepseek-chat" 或 "deepseek-pro"。
@@ -238,11 +324,11 @@ def get_eval_result(model_name: str, dimension: str) -> str:
             "相关性" —— 开放式问答，由 LLM 裁判打分。
             其它写法（英文、别名、错别字）都会被拒，并提示可选值。
     """
-    doc, error = _load_latest_report()
+    rows_by_model, available_models, error = _resolve_data()
     if error:
         return error
 
-    available_models = _real_models(doc)
+    available_models = available_models or []
     model_key = str(model_name or "").strip()
     matched_model = next((m for m in available_models if m.lower() == model_key.lower()), None)
     if matched_model is None:
@@ -253,13 +339,13 @@ def get_eval_result(model_name: str, dimension: str) -> str:
     if dim_key is None:
         return "未知维度 {!r}，可选：准确性、指令遵循、安全、相关性。请只传这四个中文名。".format(dimension)
 
-    rows = _dimension_rows(doc, matched_model)
+    rows = (rows_by_model or {}).get(matched_model) or {}
     if not rows:
         return f"报告里没有模型 {matched_model} 的维度数据（该模型可能被跳过或未跑完）。"
 
     row = rows.get(dim_key)
     if row is None:
-        available = "、".join(DIMENSION_LABELS.get(d, d) for d in rows)
+        available = "、".join(DIMENSION_LABELS[d] for d in DIMENSION_ORDER if d in rows)
         return f"报告里没有 {matched_model} 的{DIMENSION_LABELS[dim_key]}维度数据；该报告只有：{available}。"
 
     total = int(row["total"])
