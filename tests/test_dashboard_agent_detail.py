@@ -36,6 +36,13 @@ from dashboard.app import (
 )
 
 
+# agent_eval/results/ 与 agent_eval/trajectories/ **不入库**（.gitignore），CI 沙盒里一份都
+# 没有。所以依赖本机产物的用例必须能跳过，逻辑本身由「自造数据」的用例覆盖——
+# 第一版就是因为断言了真实轨迹，本地 949 passed 而 GitHub CI fail。
+LOCAL_RESULTS = sorted(Path("agent_eval/results").rglob("result-*.json"))
+LOCAL_TRAJECTORIES = sorted(Path("agent_eval/trajectories").glob("*.json"))
+
+
 def _fn_body(name: str, until: str = "") -> str:
     body = PAGE[PAGE.index(name):]
     return body[: body.index(until)] if until and until in body else body[:4000]
@@ -98,6 +105,45 @@ class TestTrajectorySteps:
         monkeypatch.setattr("dashboard.app.ROOT", tmp_path)
         assert _trajectory_steps("agent_eval/trajectories/nope.json") is None
 
+    def test_steps_extracted_from_logs(self, tmp_path: Path, monkeypatch) -> None:
+        """逐步抽取「思考 → 调用 → 观察」，用**自己造的**轨迹验证。
+
+        测试不能依赖本机跑出来的产物：``agent_eval/trajectories/`` 不入库，CI 沙盒里
+        一份都没有（第一版就是这么挂在 CI 上的：本地 949 passed，GitHub 上 fail）。
+        """
+        traj = {"logs": [
+            {"task": "题目"},  # 第 0 条是任务信息，不是步骤
+            {"step_number": 1,
+             "model_output_message": {"content": "先查安全维度"},
+             "tool_calls": [{"function": {"name": "get_eval_result",
+                                          "arguments": {"model": "deepseek-chat", "dimension": "安全"}}}],
+             "observations": "86.7%", "error": None, "is_final_answer": False},
+            {"step_number": 2, "model_output_message": {"content": ""}, "tool_calls": [],
+             "observations": "86.7%（26/30）", "error": None, "is_final_answer": True},
+        ]}
+        (tmp_path / "tj.json").write_text(json.dumps(traj, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr("dashboard.app.ROOT", tmp_path)
+        steps = _trajectory_steps("tj.json")
+        assert steps is not None and len(steps) == 2, "logs[0] 是任务信息，不该算进步骤"
+        assert steps[0]["calls"][0]["name"] == "get_eval_result", "看不到工具调用"
+        assert steps[0]["calls"][0]["args"] == {"model": "deepseek-chat", "dimension": "安全"}
+        assert steps[0]["observation"] == "86.7%", "看不到观察结果"
+        assert steps[0]["thought"] == "先查安全维度"
+        assert steps[0]["final"] is False and steps[1]["final"] is True
+
+    def test_tool_error_extracted(self, tmp_path: Path, monkeypatch) -> None:
+        """工具报错要能单独显示——那是「工具层失败」的证据。"""
+        traj = {"logs": [{"step_number": 1, "model_output_message": {"content": "查一下"},
+                          "tool_calls": [{"function": {"name": "get_eval_result", "arguments": {}}}],
+                          "observations": None, "error": "ValueError: 模型名不存在",
+                          "is_final_answer": False}]}
+        (tmp_path / "tj.json").write_text(json.dumps(traj, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr("dashboard.app.ROOT", tmp_path)
+        steps = _trajectory_steps("tj.json")
+        assert steps[0]["error"] == "ValueError: 模型名不存在"
+
+    @pytest.mark.skipif(not LOCAL_TRAJECTORIES,
+                        reason="轨迹文件不入库，CI 沙盒里没有（测试不得依赖本机产物）")
     def test_real_trajectory_has_calls_and_observation(self) -> None:
         runs = load_agent_runs()
         traj = [s for t in runs[0]["tasks"] for s in (t.get("trajectory") or [])]
@@ -109,8 +155,103 @@ class TestTrajectorySteps:
 
 
 # --------------------------------------------------------------------------- #
-# 后端注入：每次 run 都有逐题明细，轨迹只给最新一次
+# 后端注入（自造数据，CI 与本地都跑得到）
 # --------------------------------------------------------------------------- #
+@pytest.fixture
+def fake_env(tmp_path: Path, monkeypatch):
+    """自造一套 agent 结果环境：两份结果 + 一份轨迹 + 出题文件。
+
+    结果文件与轨迹都不入库，CI 沙盒里没有；**逻辑用例必须自给自足**，不能指着
+    本机跑出来的产物（否则就是「本地绿、GitHub 红」）。
+    """
+    root = tmp_path
+    for sub in ("results", "results/archive", "trajectories"):
+        (root / sub).mkdir(parents=True, exist_ok=True)
+
+    (root / "trajectories" / "tj.json").write_text(json.dumps({"logs": [
+        {"task": "题目"},
+        {"step_number": 1, "model_output_message": {"content": "查安全维度"},
+         "tool_calls": [{"function": {"name": "get_eval_result",
+                                      "arguments": {"model": "deepseek-chat", "dimension": "安全"}}}],
+         "observations": "86.7%", "error": None, "is_final_answer": False},
+        {"step_number": 2, "model_output_message": {"content": ""}, "tool_calls": [],
+         "observations": "86.7%（26/30）", "error": None, "is_final_answer": True},
+    ]}, ensure_ascii=False), encoding="utf-8")
+
+    def _result(status, steps):
+        ok = status == "通过"
+        return {
+            "model": "deepseek-chat", "repeat": 1,
+            "summary": {"任务总数": 1, "通过": int(ok), "任务成功率": 1.0 if ok else 0.0},
+            "results": [{
+                "id": "t06-pure-calc-trap", "level": "陷阱·纯计算",
+                "task": "不调工具直接算/猜数，应该被判失败",
+                "status": status, "steps": steps, "max_steps": 4,
+                "layers": {"有效性": {"pass": True, "detail": "有效"},
+                           "答案层": {"pass": ok, "detail": "金标命中" if ok else "缺少金标数字"},
+                           "工具层": {"pass": True, "detail": "命中"},
+                           "工具健康": {"pass": True, "detail": "无报错"},
+                           "步骤效率": {"pass": True, "detail": "2 步（上限 4）"}},
+                "failure_reasons": [] if ok else ["答案层：缺少「83.3」"],
+                "final_answer": "86.7%", "trajectory_path": "trajectories/tj.json",
+            }],
+        }
+
+    # 时间戳在文件名里（_agent_stamp 取的就是它），决定谁排最前
+    (root / "results" / "result-20261006-120000.json").write_text(
+        json.dumps(_result("通过", 2), ensure_ascii=False), encoding="utf-8")
+    (root / "results" / "result-20261005-120000.json").write_text(
+        json.dumps(_result("失败", 2), ensure_ascii=False), encoding="utf-8")
+
+    (root / "tasks.json").write_text(json.dumps({
+        "meta": {"v2_changes": "t06 步数上限 4→6。依据：v1 首跑（8/10）两个 FAIL 均为测试设计问题。"},
+        "tasks": [{"id": "t06-pure-calc-trap", "level": "陷阱·纯计算",
+                   "design_note": "不调工具直接算/猜数字，应该被判失败"}],
+    }, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr("dashboard.app.AGENT_RESULTS_DIR", root / "results")
+    monkeypatch.setattr("dashboard.app.AGENT_ARCHIVE_DIR", root / "results" / "archive")
+    monkeypatch.setattr("dashboard.app.AGENT_TASKS_FILE", root / "tasks.json")
+    monkeypatch.setattr("dashboard.app.ROOT", root)
+    return root
+
+
+class TestAgentEntryInjection:
+
+    def test_latest_first_and_has_trajectory(self, fake_env) -> None:
+        runs = load_agent_runs()
+        assert len(runs) == 2
+        assert runs[0]["file"] == "result-20261006-120000.json", "最新一次应排最前"
+        t = runs[0]["tasks"][0]
+        assert len(t["trajectory"]) == 2, "最新一次要带逐步轨迹"
+        assert t["trajectory"][0]["calls"][0]["name"] == "get_eval_result"
+
+    def test_history_has_no_trajectory(self, fake_env) -> None:
+        """轨迹只给最新一次（体积考虑），历史行不该有这个键。"""
+        runs = load_agent_runs()
+        assert "trajectory" not in runs[1]["tasks"][0]
+
+    def test_design_note_from_tasks_json(self, fake_env) -> None:
+        t = load_agent_runs()[0]["tasks"][0]
+        assert t["design_note"] == "不调工具直接算/猜数字，应该被判失败", "考点要原样来自出题文件"
+
+    def test_v2_note_split_and_cleaned(self, fake_env) -> None:
+        """留痕按题拆，且不能把全局「依据」说明挂到题上。"""
+        t = load_agent_runs()[1]["tasks"][0]
+        assert "步数上限" in t["v2_note"], "t06 的处置留痕没落到本题"
+        assert "依据" not in t["v2_note"], "全局说明不该算进某一题"
+
+    def test_failure_reasons_carried(self, fake_env) -> None:
+        t = load_agent_runs()[1]["tasks"][0]
+        assert t["failure_reasons"] == ["答案层：缺少「83.3」"]
+        assert t["layers"]["答案层"]["pass"] is False
+        assert t["steps"] == 2 and t["max_steps"] == 4
+
+
+# --------------------------------------------------------------------------- #
+# 后端注入：真实结果（本机产物，CI 里跳过）
+# --------------------------------------------------------------------------- #
+@pytest.mark.skipif(not LOCAL_RESULTS, reason="结果文件不入库，CI 沙盒里没有（逻辑由自造数据用例覆盖）")
 class TestAgentEntryTasks:
 
     @pytest.fixture(scope="class")
