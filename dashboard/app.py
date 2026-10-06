@@ -33,6 +33,9 @@ AGENT_REPORTS_DIR = AGENT_EVAL_DIR / "reports"
 # 它是事故留档，可以在仓库里查，但**绝不能出现在看板上**——显示了就等于
 # 把「通过了自己出的题」的成绩又摆出来一遍。
 AGENT_INVALID_MARK = "-INVALID-"
+# 出题文件：**只读**。考点文案（design_note）与判据修订留痕（meta.v2_changes）从这里搬，
+# 判据本体一个字不许动。
+AGENT_TASKS_FILE = AGENT_EVAL_DIR / "tasks.json"
 
 # ============================== 模块顶层 helper（供 tester 单测 / Python 调用） ============================== #
 
@@ -689,6 +692,30 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .catname { color: var(--muted); }
   /* 表标题下的灰色小字：说明这张表回答什么问题 */
   .hint { color: var(--muted); font-size: 12px; margin: -2px 0 10px; }
+  /* Agent 逐题明细：一题一行，点开看失败原因 / 判据修订留痕 / 逐步轨迹 */
+  .agcase { border-top: 1px solid rgba(42,54,80,.5); }
+  .agsrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 10px;
+            cursor: pointer; list-style: none; font-size: 13px; }
+  .agsrow::-webkit-details-marker { display: none; }
+  .agsrow::before { content: '▸ '; color: var(--muted); }
+  .agcase[open] > .agsrow::before { content: '▾ '; }
+  .agsrow:hover { background: var(--panel2); }
+  .agcase[open] > .agsrow { background: var(--panel2); }
+  .agid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .agpoint { color: var(--muted); font-size: 12px; flex: 1 1 240px; min-width: 160px; }
+  .badge.agtrap { background: rgba(245,180,73,.18); color: var(--warn); }
+  .agdetail { padding: 6px 14px 14px; font-size: 13px; line-height: 1.8; background: rgba(29,39,64,.35); }
+  .agsec { margin-top: 6px; }
+  .aglab { display: inline-block; min-width: 92px; color: var(--muted); font-size: 12px; vertical-align: top; }
+  .agsec > .agbody { display: inline-block; max-width: calc(100% - 100px); white-space: normal; }
+  .agfail { color: var(--bad); }
+  .agv2 { color: var(--warn); }
+  .agtraj { margin-top: 6px; }
+  .agstep { border-left: 2px solid var(--border); padding: 2px 0 2px 10px; margin-bottom: 6px; }
+  .agstepn { color: var(--muted); font-size: 12px; }
+  .agthink, .agobs { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+  .agcall { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px; word-break: break-all; }
   /* 详情页顶部「本报告结论」 */
   .conclusion { border-left: 3px solid var(--accent); }
   .anomaly-list { margin: 8px 0 0 18px; color: var(--warn); font-size: 13px; line-height: 1.8; }
@@ -1171,6 +1198,7 @@ async function renderAgent() {
       </div>
       ${agentRepeatCard(latest)}
     </div>
+    ${agentTaskList(latest)}
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
       <table>
@@ -1195,6 +1223,86 @@ async function renderAgent() {
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">暂无结果。先跑
       <code>python agent_eval/run_eval.py</code> 生成 <code>agent_eval/results/result-*.json</code>。</div></div>`}`;
+}
+
+// Agent 逐题明细：4 个汇总数字回答不了「哪道题挂了、为什么挂」——10/10 全绿和 0/10 全红
+// 提供的信息量几乎一样。这里把每题的考点、各层断言、失败原因、判据修订留痕、逐步轨迹
+// 摆出来，访问者不看解说也能回答三件事：这题在考什么、哪层没过、为什么挂、后来怎么处理的。
+// 层名与结果 JSON 的 layers 字段一致（「有效性」不单列：它是这次跑没跑成，不是断言层）。
+const AGENT_LAYERS = [['答案层', '答案'], ['工具层', '工具'], ['步骤效率', '步数'], ['工具健康', '工具健康']];
+
+function agentLayerChips(t) {
+  const L = t.layers || {};
+  return AGENT_LAYERS.map(([key, short]) => {
+    const l = L[key];
+    if (!l) return `<span class="badge" title="${esc(key)}：本次未判">${short} —</span>`;
+    return `<span class="badge ${l.pass ? 'pass' : 'fail'}" title="${esc(key)}：${esc(l.detail || '')}">${l.pass ? '✓' : '✗'} ${esc(short)}</span>`;
+  }).join('');
+}
+
+function agentTrajStep(s) {
+  const calls = (s.calls || []).map(c => `<div class="agcall">→ ${esc(c.name)}(${esc(JSON.stringify(c.args || {}))})</div>`).join('');
+  const obs = String(s.observation || '');
+  return `<div class="agstep">
+      <div class="agstepn">第 ${esc(s.n)} 步${s.final ? ' · 给出终答' : ''}</div>
+      ${s.thought ? `<div class="agthink">思考：${esc(s.thought.slice(0, 300))}</div>` : ''}
+      ${calls}
+      ${s.error ? `<div class="agfail">工具报错：${esc(s.error)}</div>` : ''}
+      ${obs ? `<div class="agobs">${s.final ? '终答' : '观察'}：${esc(obs.slice(0, 300))}</div>` : ''}
+    </div>`;
+}
+
+function agentTaskDetail(t) {
+  const L = t.layers || {};
+  const failed = Object.keys(L).filter(k => L[k] && !L[k].pass);
+  const sec = (label, body) => `<div class="agsec"><span class="aglab">${esc(label)}</span><span class="agbody">${body}</span></div>`;
+  let html = sec('题目', esc(t.task || '—')) + sec('最终答案', esc(t.final_answer || '—'));
+  if ((t.failure_reasons || []).length) {
+    html += sec('失败原因', t.failure_reasons.map(r => `<div class="agfail">✗ ${esc(r)}</div>`).join(''));
+  } else if (failed.length) {
+    html += sec('失败层', failed.map(k => `<div class="agfail">✗ ${esc(k)}：${esc((L[k] || {}).detail || '')}</div>`).join(''));
+  }
+  if (t.v2_note) html += sec('判据修订留痕', `<span class="agv2">${esc(t.v2_note)}</span>`);
+  if (t.repeat) {
+    html += sec('repeat 稳定性',
+      `各遍：${esc((t.repeat.各遍状态 || []).join(' / '))} · ${t.repeat.状态一致
+        ? '<span style="color:var(--ok)">一致</span>' : '<span style="color:var(--warn)">不一致</span>'}`);
+  }
+  const tr = t.trajectory;
+  html += (Array.isArray(tr) && tr.length)
+    ? sec('轨迹', `<div class="agtraj">${tr.map(agentTrajStep).join('')}</div>`)
+    : sec('轨迹', '<span class="catname">无轨迹（本次结果未归档轨迹文件）</span>');
+  return html;
+}
+
+function agentTaskRow(t) {
+  const isTrap = /陷阱/.test(String(t.level || ''));
+  const rep = t.repeat;
+  return `<details class="agcase">
+      <summary class="agsrow">
+        <span class="agid">${esc(t.id || '—')}</span>
+        <span class="badge ${isTrap ? 'agtrap' : ''}">${esc(t.level || '—')}</span>
+        <span class="agpoint" title="考点：tasks.json 的 design_note，原样搬运">${esc(t.design_note || '—')}</span>
+        <span class="badge ${t.status === '通过' ? 'pass' : 'fail'}">${esc(t.status || '—')}</span>
+        ${agentLayerChips(t)}
+        <span class="catname">步数 ${esc(t.steps ?? '—')}/${esc(t.max_steps ?? '—')}</span>
+        ${rep
+          ? `<span class="badge ${rep.状态一致 ? 'pass' : 'skip'}" title="各遍：${esc((rep.各遍状态 || []).join(' / '))}">稳定性 ${rep.状态一致 ? '✓' : '✗'}</span>`
+          : '<span class="badge" title="本次只跑 1 遍，不判稳定性">稳定性 —</span>'}
+      </summary>
+      <div class="agdetail">${agentTaskDetail(t)}</div>
+    </details>`;
+}
+
+function agentTaskList(latest) {
+  const tasks = (latest && latest.tasks) || [];
+  if (!tasks.length) return '';
+  return `<div class="card">
+      <div style="font-weight:600;margin-bottom:4px">逐题明细 · 最新一次（${esc(latest.time || '—')} · 大脑 ${esc(latest.brain || 'deepseek-chat')}）</div>
+      <div class="hint" style="padding:0 12px 6px">被测对象是 <b>agent 系统本身</b>，大脑只是可替换组件（换脑跑的成绩在下方历史表里分行看）。
+        考点取自 <code>agent_eval/tasks.json</code> 的 design_note，原样搬运不另编；四层断言逐项亮灯（悬停看判定依据）；点开一行看失败原因、判据修订留痕与逐步轨迹。</div>
+      ${tasks.map(agentTaskRow).join('')}
+    </div>`;
 }
 
 // 一份报告里参与「成绩」的模型行：横向报告取 model_rows，单模型报告取 model 一个。
@@ -2258,7 +2366,107 @@ def _agent_stamp(name: str):
     return m.group(0) if m else None
 
 
-def _agent_entry(path: Path, archived: bool):
+def _split_task_notes(meta: dict) -> dict:
+    """把 tasks.json 里整段的 ``meta.v2_changes`` 按题号拆开：一句提到哪题，就算哪题的留痕。
+
+    留痕的价值在「这道题当初为什么改判据」——误报归因 → 判据修订 → 留痕，挂在题上才
+    读得出因果；整段贴在页面顶部等于没写。tasks.json 只读，判据本体不动。
+    """
+    raw = str((meta or {}).get("v2_changes") or "").strip()
+    if not raw:
+        return {}
+    out: dict = {}
+    for seg in re.split(r"[；;]", raw):
+        seg = seg.strip()
+        if not seg:
+            continue
+        # 「依据：……」是对整批改动的说明，常跟在某题那句后面（用句号连接），
+        # 挂到某一题上就答非所问，按子句剔掉
+        clauses = [c.strip() for c in re.split(r"[。]", seg) if c.strip()]
+        clauses = [c for c in clauses if not c.startswith("依据")]
+        if not clauses:
+            continue
+        seg = "。".join(clauses)
+        for tid in re.findall(r"t\d{2}", seg):
+            bucket = out.setdefault(tid, [])
+            if seg not in bucket:
+                bucket.append(seg)
+    return {k: "；".join(v) for k, v in out.items()}
+
+
+def _load_task_notes() -> dict:
+    """读 ``agent_eval/tasks.json``，取每道题的考点文案与判据修订留痕（**只读**）。
+
+    考点文案是出题人写的 ``design_note``，看板原样搬运、不另编：自己概括的考点会和判据
+    对不上，等于给访问者讲了一个没有出处故事。
+    """
+    try:
+        data = json.loads(AGENT_TASKS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    tasks = data.get("tasks")
+    if not isinstance(tasks, list):
+        return {}
+    v2 = _split_task_notes(data.get("meta") or {})
+    notes = {}
+    for t in tasks:
+        if not isinstance(t, dict) or not t.get("id"):
+            continue
+        tid = str(t["id"])
+        notes[tid] = {
+            "design_note": str(t.get("design_note") or ""),
+            "level": str(t.get("level") or ""),
+            "v2_note": v2.get(tid.split("-")[0], ""),
+        }
+    return notes
+
+
+def _trajectory_steps(rel_path) -> list:
+    """读一份落盘轨迹，抽出「思考 → 调用工具 → 观察」的逐步明细；读不动返回 None。
+
+    老结果没归档轨迹是常态（轨迹是后加的能力），缺就缺，页面上降级显示「无轨迹」，
+    不拿别的题的轨迹凑数。
+    """
+    if not rel_path:
+        return None
+    fp = ROOT / str(rel_path)
+    try:
+        data = json.loads(fp.read_text(encoding="utf-8"))
+        logs = (data or {}).get("logs") or []
+    except Exception:
+        return None
+    steps = []
+    for log in logs:
+        # logs[0] 是任务信息（只有 task 字段），不是步骤
+        if not isinstance(log, dict) or "step_number" not in log:
+            continue
+        msg = log.get("model_output_message")
+        msg = msg if isinstance(msg, dict) else {}
+        calls = []
+        for c in log.get("tool_calls") or []:
+            fn = (c or {}).get("function") if isinstance(c, dict) else None
+            fn = fn if isinstance(fn, dict) else {}
+            args = fn.get("arguments")
+            calls.append({
+                "name": str(fn.get("name") or ""),
+                "args": args if isinstance(args, dict) else {},
+            })
+        obs = log.get("observations")
+        err = log.get("error")
+        steps.append({
+            "n": log.get("step_number"),
+            "thought": str(msg.get("content") or "").strip(),
+            "calls": calls,
+            "observation": "" if obs is None else str(obs)[:600],
+            "error": "" if err is None else str(err)[:300],
+            "final": str(log.get("is_final_answer")).lower() == "true",
+        })
+    return steps
+
+
+def _agent_entry(path: Path, archived: bool, with_trajectory: bool = False):
     """读一份 Agent 评测结果，归一化成看板要的字段；读不动返回 None（跳过）。"""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -2295,6 +2503,43 @@ def _agent_entry(path: Path, archived: bool):
     rs = data.get("repeat_summary")
     if repeat > 1 and isinstance(rs, dict):
         entry["repeat_summary"] = rs
+
+    # 逐题明细：考点文案 / 各层断言 / 失败原因 / 判据修订留痕，页面靠它自解释。
+    # 4 个汇总数字（成功率 / 工具正确率 / 平均步数 / 陷阱防线）回答不了「哪道题挂了、
+    # 为什么挂」，10/10 全绿和 0/10 全红提供的信息量几乎一样。
+    notes = _load_task_notes()
+    by_task = {}
+    if isinstance(rs, dict):
+        for it in rs.get("逐题") or []:
+            if isinstance(it, dict) and it.get("id"):
+                by_task[str(it["id"])] = it
+    tasks = []
+    for t in data.get("results") or []:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("id") or "")
+        note = notes.get(tid) or {}
+        item = {
+            "id": tid,
+            "level": str(t.get("level") or note.get("level") or ""),
+            "task": str(t.get("task") or ""),
+            "status": str(t.get("status") or ""),
+            "steps": t.get("steps"),
+            "max_steps": t.get("max_steps"),
+            "layers": t.get("layers") or {},
+            "failure_reasons": t.get("failure_reasons") or [],
+            "final_answer": str(t.get("final_answer") or ""),
+            # 考点文案取 tasks.json 的 design_note，不另编（出处可查）
+            "design_note": note.get("design_note", ""),
+            "v2_note": note.get("v2_note", ""),
+        }
+        if tid in by_task:
+            item["repeat"] = by_task[tid]
+        # 轨迹只给最新一次：一份 30–60KB，全量注入会把 api/agent.json 撑到 MB 级
+        if with_trajectory:
+            item["trajectory"] = _trajectory_steps(t.get("trajectory_path"))
+        tasks.append(item)
+    entry["tasks"] = tasks
     return entry
 
 
@@ -2342,14 +2587,20 @@ def load_agent_runs() -> list:
     if AGENT_ARCHIVE_DIR.is_dir():
         paths += [(p, True) for p in AGENT_ARCHIVE_DIR.glob("result-*.json")]
 
-    runs = []
+    pairs = []
     for path, archived in paths:
         if AGENT_INVALID_MARK in path.name:
             continue
         entry = _agent_entry(path, archived)
         if entry:
-            runs.append(entry)
-    runs.sort(key=lambda x: _time_key(x["time"]), reverse=True)
+            pairs.append((entry, path, archived))
+    pairs.sort(key=lambda x: _time_key(x[0]["time"]), reverse=True)
+    runs = [p[0] for p in pairs]
+    # 轨迹只给最新一次重读一遍（体积考虑，见 _agent_entry）；历史行没有轨迹，
+    # 页面上显示「无轨迹」而不是把老结果伪装成也留了档。
+    if pairs:
+        entry, path, archived = pairs[0]
+        runs[0] = _agent_entry(path, archived, with_trajectory=True)
     _pair_agent_reports(runs)
     return runs
 
