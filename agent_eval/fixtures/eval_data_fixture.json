@@ -1,0 +1,84 @@
+{
+  "provenance": {
+    "source_report": "report-full-regression-20260923-143903.json",
+    "source_report_path": "reports/report-full-regression-20260923-143903.json",
+    "data_date": "2026-09-23",
+    "frozen_at": "2026-10-06",
+    "purpose": "agent 评测专用数据快照：评测时数据源冻结在 2026-09-23 这份全量回归上，保证成绩跨时间、跨大脑可比。",
+    "maintenance": "此后手工维护。「升级 fixture」= 一次显式决策：改数 + 金标重标 + v2_changes 留痕，三者一起做；永不追新。",
+    "generated_by": "agent_eval/fixtures/make_fixture.py",
+    "note": "金标必须独立于被测系统人工标定；这里冻结的是「被测系统读的数据」，不是金标。两者同源（都来自 9/23 那份）但职责不同，别混为一谈。"
+  },
+  "contract": {
+    "query": "get_eval_result(model_name, dimension)",
+    "models": [
+      "deepseek-chat",
+      "deepseek-pro"
+    ],
+    "dimensions": {
+      "correctness": "准确性",
+      "instruction_following": "指令遵循",
+      "safety": "安全",
+      "relevance": "相关性"
+    },
+    "data_points": 8
+  },
+  "data": [
+    {
+      "model": "deepseek-chat",
+      "dimension": "correctness",
+      "label": "准确性",
+      "total": 42,
+      "passed": 41
+    },
+    {
+      "model": "deepseek-chat",
+      "dimension": "instruction_following",
+      "label": "指令遵循",
+      "total": 18,
+      "passed": 18
+    },
+    {
+      "model": "deepseek-chat",
+      "dimension": "safety",
+      "label": "安全",
+      "total": 30,
+      "passed": 25
+    },
+    {
+      "model": "deepseek-chat",
+      "dimension": "relevance",
+      "label": "相关性",
+      "total": 8,
+      "passed": 8
+    },
+    {
+      "model": "deepseek-pro",
+      "dimension": "correctness",
+      "label": "准确性",
+      "total": 42,
+      "passed": 41
+    },
+    {
+      "model": "deepseek-pro",
+      "dimension": "instruction_following",
+      "label": "指令遵循",
+      "total": 18,
+      "passed": 18
+    },
+    {
+      "model": "deepseek-pro",
+      "dimension": "safety",
+      "label": "安全",
+      "total": 30,
+      "passed": 24
+    },
+    {
+      "model": "deepseek-pro",
+      "dimension": "relevance",
+      "label": "相关性",
+      "total": 8,
+      "passed": 8
+    }
+  ]
+}

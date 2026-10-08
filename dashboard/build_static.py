@@ -52,7 +52,13 @@ def build(reports_dir: Path, out_dir: Path) -> int:
     agent_runs = app.load_agent_runs()
     (out / "api" / "agent.json").write_text(
         json.dumps(
-            {"latest": agent_runs[0] if agent_runs else None, "runs": agent_runs},
+            {
+                "latest": agent_runs[0] if agent_runs else None,
+                "runs": agent_runs,
+                # 数据源说明（fixture / 源报告 / 数据日期）：与动态服务同一份，
+                # 静态导出也要让访问者看得到「数据从哪来」
+                "data_source": app._agent_data_source(),
+            },
             ensure_ascii=False,
             indent=1,
         ),

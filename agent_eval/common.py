@@ -34,6 +34,20 @@ DEFAULT_TOOLS = [calculator, get_eval_result]
 DEFAULT_MAX_STEPS = 8
 
 
+def ensure_utf8_stdio() -> None:
+    """把 stdout / stderr 钉成 utf-8。
+
+    Windows 控制台默认 GBK：模型输出里只要带一个 U+2212（数学减号「−」），
+    打印轨迹就会 UnicodeEncodeError——崩在这一步的题会被记成「无效」（步数 0），
+    不进通过率却污染稳定性判定。打印是给人看的，终端编码不该决定评测结果，
+    所以显式钉死，不再依赖运行环境。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def build_model(model_name: str = AGENT_MODEL_NAME) -> OpenAIServerModel:
     """从项目配置构造大脑：model_id / api_key 都来自 models.yaml + .env。
 

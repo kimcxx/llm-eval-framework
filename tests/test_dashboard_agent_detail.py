@@ -289,7 +289,20 @@ class TestPageRendering:
 
     def test_render_agent_draws_task_list(self) -> None:
         body = _fn_body("async function renderAgent", "// Agent 逐题明细")
-        assert "agentTaskList(latest)" in body, "renderAgent 没渲染逐题明细"
+        assert "agentTaskList(latest, ds)" in body, "renderAgent 没渲染逐题明细"
+
+    def test_agent_page_declares_data_source(self) -> None:
+        """⑤ 页面透明化：数据源必须写在页面上——它是判分的前提。
+
+        藏起来的后果已经发生过一次：金标停在 9/23、工具读 10-04，10 道题里 4 道
+        变成没人看得懂的 fail。
+        """
+        body = _fn_body("function agentTaskList", "\nfunction ")
+        assert "data_source" in _fn_body("async function renderAgent", "// Agent 逐题明细"), \
+            "renderAgent 要把后端给的数据源传给明细区"
+        assert "agent 评测专用快照" in body, "要写明数据来自冻结的快照，不是「最新报告」"
+        assert "ds.source_report" in body and "href=\"#" in body, \
+            "要给源报告在 #llm 详情页的链接，访问者才能自己核"
 
     def test_four_layers_lit_individually(self) -> None:
         """四层断言逐项亮灯，不许只给一个总评。"""

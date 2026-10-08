@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,10 +31,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agent_eval.common import (  # noqa: E402
     AGENT_MODEL_NAME,
+    ensure_utf8_stdio,
     observations_of,
     rel_or_abs,
     run_agent_task,
 )
+from agent_eval.tools import SOURCE_FIXTURE  # noqa: E402
+
+# 评测的数据源**钉死在 fixture 上**：外部哪怕设了 AGENT_EVAL_DATA_SOURCE=latest
+# 也不生效。「静默读最新」正是上次金标漂移的根因（10-04 新全量回归落地后，10 道题里
+# 4 道变成莫名其妙的 fail），这里不留后门——要看实时数据另开实时模式的工具调用，
+# 别让它污染评测成绩。
+os.environ["AGENT_EVAL_DATA_SOURCE"] = SOURCE_FIXTURE
 
 TASKS_FILE = Path(__file__).resolve().parent / "tasks.json"
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -403,6 +412,8 @@ def _archive_previous(current: Path) -> list[str]:
 
 
 def main() -> int:
+    # 钉死终端编码：模型输出带 U+2212 之类的字符时，别让打印把整道题打成「无效」
+    ensure_utf8_stdio()
     tasks = load_tasks()
 
     if "--dry-run" in sys.argv:

@@ -1173,6 +1173,7 @@ async function renderAgent() {
   const a = await fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
   const runs = (a && a.runs) || [];
   const latest = (a && a.latest) || null;
+  const ds = (a && a.data_source) || {};
   const holdBadge = latest && latest.trap_hold
     ? '<span class="badge pass">守住</span>'
     : (latest && latest.trap_hold === false ? '<span class="badge fail">未守住</span>' : '<span class="catname">—</span>');
@@ -1198,7 +1199,7 @@ async function renderAgent() {
       </div>
       ${agentRepeatCard(latest)}
     </div>
-    ${agentTaskList(latest)}
+    ${agentTaskList(latest, ds)}
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
       <table>
@@ -1294,11 +1295,18 @@ function agentTaskRow(t) {
     </details>`;
 }
 
-function agentTaskList(latest) {
+function agentTaskList(latest, ds) {
   const tasks = (latest && latest.tasks) || [];
   if (!tasks.length) return '';
+  // 数据源必须写在页面上：它是判分的前提，藏起来访问者就发现不了
+  // 「金标还停在旧报告上」这种漂移（2026-10-06 那次正是这么藏了很久）
+  const srcFile = (ds && ds.source_report) ? String(ds.source_report).split('/').pop() : '';
+  const dsLine = srcFile
+    ? `<div class="hint" style="padding:0 12px 6px">数据源：<b>agent 评测专用快照</b>（源自 ${esc(ds.data_date || '—')} 全量回归 · <code>${esc(ds.fixture || '')}</code>）· <a href="#${encodeURIComponent(srcFile)}">看该报告 →</a></div>`
+    : '';
   return `<div class="card">
       <div style="font-weight:600;margin-bottom:4px">逐题明细 · 最新一次（${esc(latest.time || '—')} · 大脑 ${esc(latest.brain || 'deepseek-chat')}）</div>
+      ${dsLine}
       <div class="hint" style="padding:0 12px 6px">被测对象是 <b>agent 系统本身</b>，大脑只是可替换组件（换脑跑的成绩在下方历史表里分行看）。
         考点取自 <code>agent_eval/tasks.json</code> 的 design_note，原样搬运不另编；四层断言逐项亮灯（悬停看判定依据）；点开一行看失败原因、判据修订留痕与逐步轨迹。</div>
       ${tasks.map(agentTaskRow).join('')}
@@ -2423,6 +2431,26 @@ def _load_task_notes() -> dict:
     return notes
 
 
+def _agent_data_source() -> dict:
+    """#agent 页要写明的「数据从哪来」（**只读** tasks.json 的 meta）。
+
+    数据源是判分的前提——不写出来，访问者根本发现不了「金标还停在旧报告上」这种
+    漂移（2026-10-06 那次就是这么藏了很久）。给前端三样东西：fixture 文件名、
+    源报告文件名、数据日期（源报告在 #llm 详情页可点开）。
+    """
+    try:
+        meta = json.loads(AGENT_TASKS_FILE.read_text(encoding="utf-8")).get("meta") or {}
+    except Exception:
+        return {}
+    note = str(meta.get("golden_source_note") or "")
+    match = re.search(r"\d{4}-\d{2}-\d{2}", note)
+    return {
+        "fixture": str(meta.get("data_source") or ""),
+        "source_report": str(meta.get("source_report") or ""),
+        "data_date": match.group(0) if match else "",
+    }
+
+
 def _trajectory_steps(rel_path) -> list:
     """读一份落盘轨迹，抽出「思考 → 调用工具 → 观察」的逐步明细；读不动返回 None。
 
@@ -2651,7 +2679,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(_load_tests_detail() or {})
         elif path in ("/api/agent", "/api/agent.json"):
             runs = load_agent_runs()
-            self._json({"latest": runs[0] if runs else None, "runs": runs})
+            self._json({"latest": runs[0] if runs else None, "runs": runs,
+                        "data_source": _agent_data_source()})
         elif path.startswith("/api/agent/report/"):
             # Agent 评测的 HTML 报告：走 API 而不是直接链 agent_eval/ 下的文件，
             # 这样动态服务与静态导出（build_static 会把它写进 dist/api/agent/report/）
