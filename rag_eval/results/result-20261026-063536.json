@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-26T06:19:11",
+  "generated_at": "2026-10-26T06:35:36",
   "models": [
     "rag-mock-baseline"
   ],
@@ -17,7 +17,7 @@
       "upgrade_policy": "升级知识库 = 一次显式决策：改文档 + 重标金标 + 在用例.meta 或本文件留痕，三者一起做。"
     }
   },
-  "report_file": "reports/report-cd-rag-20261026-061911.json",
+  "report_file": "reports/report-cd-rag-20261026-063536.json",
   "summary": [
     {
       "model": "rag-mock-baseline",
