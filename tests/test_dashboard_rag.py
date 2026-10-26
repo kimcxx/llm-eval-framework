@@ -100,6 +100,14 @@ class TestRagPortalWiring:
     def test_portal_is_three_layers(self) -> None:
         assert "LLM &amp; Agent &amp; RAG 评测实验室" in app.PAGE
 
+    def test_answer_cell_is_wrappable(self) -> None:
+        """回答是自由文本：全局 td 是 nowrap，不显式允许换行会把表格撑出横向滚动条。
+
+        这是页面上真实出现过的版式问题（长回答把各列挤变形），故钉一条断言。
+        """
+        assert ".wrapcell" in app.PAGE, "缺 wrapcell 样式（长文本换行）"
+        assert "ragAnswerCell" in app.PAGE, "回答列没走专门的单元格渲染"
+
     def test_scope_no_longer_says_rag_uncovered(self) -> None:
         """RAG 已从「未覆盖」挪进已覆盖，但要写明只覆盖固定管道。"""
         assert "agentic RAG" in app.PAGE

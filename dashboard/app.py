@@ -781,6 +781,9 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   /* 等宽 / 可滚动文本块 */
   .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
           white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+  /* 自由文本单元格（RAG 回答、问题原文）：全局 td 是 nowrap，长回答会把表格撑出
+     横向滚动条、把其它列挤变形。这里显式允许换行 + 限宽，超出部分按字断行。 */
+  .wrapcell { white-space: pre-wrap; word-break: break-word; max-width: 30em; }
   .scroll-box { max-height: 320px; overflow: auto; background: var(--bg);
     border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
 
@@ -1246,6 +1249,15 @@ function ragProvenanceLine(p) {
   return `<div class="hint" style="padding:10px 12px 0">知识库 provenance：${bits.join(' · ')}</div>`;
 }
 
+// 回答是自由文本（可能几百字、带换行、带 Markdown 符号），直接塞进 nowrap 的 td
+// 会把表格撑出横向滚动条。做法：限宽 + 允许换行 + 超 140 字截断，全文放 title 悬停看。
+function ragAnswerCell(c) {
+  const full = String(c.answer || '');
+  if (!full) return '<td class="catname">—</td>';
+  const shown = full.length > 140 ? full.slice(0, 140) + '…' : full;
+  return `<td class="wrapcell catname" title="${esc(full)}">${esc(shown)}</td>`;
+}
+
 function ragCaseRow(c) {
   const statusBadge = c.status === '通过'
     ? '<span class="badge pass">通过</span>'
@@ -1261,12 +1273,12 @@ function ragCaseRow(c) {
   return `
     <tr>
       <td class="mono">${esc(c.id)}</td>
-      <td>${esc((c.prompt || '').slice(0, 60))}</td>
+      <td class="wrapcell">${esc((c.prompt || '').slice(0, 80))}</td>
       <td class="catname">${esc((c.retrieved || []).join(', ') || '（空）')}</td>
       <td>${gold}</td>
       <td>${hit}</td>
-      <td>${statusBadge}<div style="margin-top:4px">${metrics}</div></td>
-      <td class="catname">${esc((c.answer || '').slice(0, 100))}</td>
+      <td class="wrapcell">${statusBadge}<div style="margin-top:4px">${metrics}</div></td>
+      ${ragAnswerCell(c)}
     </tr>`;
 }
 
