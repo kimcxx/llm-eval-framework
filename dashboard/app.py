@@ -37,6 +37,13 @@ AGENT_INVALID_MARK = "-INVALID-"
 # 判据本体一个字不许动。
 AGENT_TASKS_FILE = AGENT_EVAL_DIR / "tasks.json"
 
+# RAG 评测（rag_eval/）的数据位置——只读，不写、不改。
+# 与 Agent 层同理单独扫目录：RAG 层的「通过率」是「检索找对 + 生成忠于资料 + 不编造」，
+# 和模型层的答对率、Agent 层的调对工具率是三件事，混进一张表就互相污染口径。
+RAG_EVAL_DIR = ROOT / "rag_eval"
+RAG_RESULTS_DIR = RAG_EVAL_DIR / "results"
+RAG_ARCHIVE_DIR = RAG_RESULTS_DIR / "archive"
+
 # ============================== 模块顶层 helper（供 tester 单测 / Python 调用） ============================== #
 
 
@@ -1226,6 +1233,102 @@ async function renderAgent() {
       <code>python agent_eval/run_eval.py</code> 生成 <code>agent_eval/results/result-*.json</code>。</div></div>`}`;
 }
 
+// RAG 评测页（#rag）：与模型层、Agent 层并列的第三层。
+// 这里要看三件事：检索找没找对（recall@k）、生成有没有忠于资料、资料里没有时会不会编。
+// 逐题把「它依据了哪几段」摆出来，是因为 RAG 的错误有两种完全不同的病因——
+// 没检索到（检索层的锅）和检索到了没用好（生成层的锅），混在一起看就没法归因。
+function ragProvenanceLine(p) {
+  if (!p || !Object.keys(p).length) return '';
+  const bits = [];
+  if (p.frozen_at) bits.push('冻结于 ' + esc(p.frozen_at));
+  if (p.status) bits.push(esc(p.status));
+  if (p.source) bits.push('来源：' + esc(p.source));
+  return `<div class="hint" style="padding:10px 12px 0">知识库 provenance：${bits.join(' · ')}</div>`;
+}
+
+function ragCaseRow(c) {
+  const statusBadge = c.status === '通过'
+    ? '<span class="badge pass">通过</span>'
+    : (c.status === '跳过' ? '<span class="badge">跳过</span>' : '<span class="badge fail">失败</span>');
+  const gold = (c.gold && c.gold.length) ? esc(c.gold.join(', ')) : '<span class="catname">—（无答案类）</span>';
+  const hit = (c.gold && c.gold.length)
+    ? (c.gold_hit ? '<span class="badge pass">命中</span>' : '<span class="badge fail">未命中</span>')
+    : '<span class="catname">—</span>';
+  const metrics = (c.metrics || []).map(m => {
+    const cls = m.passed === true ? 'pass' : (m.passed === false ? 'fail' : '');
+    return `<span class="badge ${cls}" title="${esc(m.detail || '')}">${esc(m.name)}${m.passed === true ? ' ✓' : (m.passed === false ? ' ✗' : ' —')}</span>`;
+  }).join(' ');
+  return `
+    <tr>
+      <td class="mono">${esc(c.id)}</td>
+      <td>${esc((c.prompt || '').slice(0, 60))}</td>
+      <td class="catname">${esc((c.retrieved || []).join(', ') || '（空）')}</td>
+      <td>${gold}</td>
+      <td>${hit}</td>
+      <td>${statusBadge}<div style="margin-top:4px">${metrics}</div></td>
+      <td class="catname">${esc((c.answer || '').slice(0, 100))}</td>
+    </tr>`;
+}
+
+async function renderRag() {
+  const a = await fetch('api/rag.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
+  const runs = (a && a.runs) || [];
+  const latest = (a && a.latest) || null;
+  const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
+      <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
+  const cases = (latest && latest.cases) || [];
+
+  $app.innerHTML = `
+    <a class="back" href="#">← 返回实验室首页</a>
+    <h1>RAG 评测 <span class="sub" style="font-size:13px;font-weight:400">（检索找得对不对 / 生成忠不忠于资料 / 没有资料时编不编）</span></h1>
+    <div class="sub">数据源：<code>rag_eval/results/</code>（含 <code>archive/</code>）。
+      被测对象是项目内自建的 mini-RAG <b>固定管道</b>：每问无条件检索 top-k 再生成，
+      不做「要不要检索」的决策、不产生多步轨迹——所以它是独立的一层，不是 Agent 层的子集。</div>
+    ${latest ? `
+    <div class="card">
+      <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+        · 被测对象 <b>${esc(latest.model || '—')}</b>
+        · ${esc(latest.file)}${latest.report_file ? ` · <span class="catname">${esc(latest.report_file)}</span>` : ''}</div>
+      <div class="grid" style="margin-bottom:4px">
+        ${statHtml('任务通过率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过${Number(latest.skipped || 0) ? ` · ${esc(latest.skipped)} 跳过` : ''}</div>`, rateColor(latest.pass_rate || 0))}
+        ${statHtml(`检索层 recall@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
+        ${statHtml('知识库', `${esc(latest.doc_count ?? '—')} 段<div class="k">top-${esc(latest.top_k ?? 2)} 拼进上下文</div>`)}
+        ${statHtml('检索后端', `<span style="font-size:13px">${esc(latest.retriever || '—')}</span>`)}
+      </div>
+      ${ragProvenanceLine(latest.provenance)}
+    </div>
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px">逐题明细（${cases.length} 条）</div>
+      <div class="hint">「检索到」是这次真正拼进上下文的资料编号，「正确出处」是题目标注的答案所在文档——
+        两者对不上就是检索层的锅；对得上却答错，那是生成层没用好资料。</div>
+      <table>
+        <tr><th>用例</th><th>问题</th><th>检索到</th><th>正确出处</th><th>命中</th><th>判定</th><th>回答（截断）</th></tr>
+        ${cases.map(ragCaseRow).join('') || `<tr><td colspan="7" class="empty">暂无明细</td></tr>`}
+      </table>
+    </div>
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
+      <table>
+        <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>recall@k</th><th>状态</th></tr>
+        ${runs.map(r => `
+          <tr>
+            <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
+            <td><span class="badge">${esc(r.model || '—')}</span></td>
+            ${rateCell(r.pass_rate || 0)}
+            <td class="catname">${r.recall_at_k === undefined || r.recall_at_k === null ? '—' : pct(r.recall_at_k)}</td>
+            <td>${Number(r.failed || 0) === 0
+                ? '<span class="badge pass">无失败</span>'
+                : `<span class="badge fail">${esc(r.failed)} 失败</span>`}
+              <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
+          </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
+      </table>
+    </div>` : `
+    <div class="card"><div class="sub" style="margin:0">暂无结果。先跑
+      <code>python rag_eval/run_eval.py</code>（零成本冒烟：
+      <code>--models mock-baseline --no-embedding</code>）生成
+      <code>rag_eval/results/result-*.json</code>。</div></div>`}`;
+}
+
 // Agent 逐题明细：4 个汇总数字回答不了「哪道题挂了、为什么挂」——10/10 全绿和 0/10 全红
 // 提供的信息量几乎一样。这里把每题的考点、各层断言、失败原因、判据修订留痕、逐步轨迹
 // 摆出来，访问者不看解说也能回答三件事：这题在考什么、哪层没过、为什么挂、后来怎么处理的。
@@ -1350,6 +1453,7 @@ function isSelfCheckReport(r) {
 // 每张卡三段式：被测对象 / 怎么测 / 最新成绩——访问者一眼看明白测的是谁、怎么测、结果如何。
 async function renderPortal(reports) {
   const agent = await fetch('api/agent.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
+  const rag = await fetch('api/rag.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
   const sec = (label, body) => `<div class="psec"><span class="plabel">${esc(label)}</span>${body}</div>`;
 
   // 模型层：成绩来自「第一份含真实模型的报告」，逐真实模型给通过率 + 报告日期
@@ -1406,12 +1510,26 @@ async function renderPortal(reports) {
         <span class="pwhen">${esc(fmtTime(aLatest.time))}</span>`)
       : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
 
+  // RAG 层：第三张卡。口径同 #rag 页——检索层与生成层分开看，才能归因。
+  const rLatest = (rag && rag.latest) || null;
+  const rTotal = rLatest ? rLatest.total : 13;
+  const ragCard = `
+      <div class="ptitle">RAG 层评测</div>
+      ${sec('被测对象', `项目内自建 mini-RAG <b>固定管道</b>${rLatest && rLatest.model ? ` · 大脑 ${esc(String(rLatest.model).replace(/^rag-/, ''))}` : ''}`)}
+      ${sec('怎么测', `冻结知识库 ${esc(rLatest ? rLatest.doc_count : 14)} 段 · top-${esc(rLatest ? rLatest.top_k : 2)} 检索 · 三类考点（命中 / 忠实度 / 无答案诚实）· 检索层 recall@k`)}
+      ${rLatest ? sec('最新成绩', `
+        <span class="pchip">任务 <b class="rate" style="color:${rateColor(rLatest.pass_rate || 0)}">${esc(rLatest.passed ?? 0)}/${esc(rLatest.total ?? 0)}</b></span>
+        <span class="pchip">recall@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
+        <span class="pwhen">${esc(fmtTime(rLatest.time))}</span>`)
+      : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
+
   $app.innerHTML = `
-    <h1>LLM &amp; Agent 评测实验室</h1>
+    <h1>LLM &amp; Agent &amp; RAG 评测实验室</h1>
     <div class="plead">一个 AI 测试方向的自学实战项目 —— 不是生产级框架，但评测闭环的每个环节都真实跑通。</div>
     <div class="sub">模型层：用同一套用例集横向对比 ${modelsHtml} 的能力、稳定性与工程成本，并接入 CI 回归门禁；
       Agent 层：一个 <b>smolagents ToolCallingAgent</b>，大脑 ${brainsHtml} · 2 个真实回归工具，
-      10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性。</div>
+      10 道任务含 4 道陷阱，看工具调用、答题质量与多遍稳定性；
+      RAG 层：项目内自建的 mini-RAG 固定管道，看检索找得对不对、生成忠不忠于资料、没有资料时会不会编。</div>
     <div class="portal">
       <a class="pcard" href="#llm">
         ${llmCard}
@@ -1421,6 +1539,10 @@ async function renderPortal(reports) {
         ${agentCard}
         <div class="pgo">查看 Agent 层详情 →</div>
       </a>
+      <a class="pcard" href="#rag">
+        ${ragCard}
+        <div class="pgo">查看 RAG 层详情 →</div>
+      </a>
     </div>
     <div class="pscope">
       <div class="pscopetitle">项目定位与局限</div>
@@ -1428,11 +1550,13 @@ async function renderPortal(reports) {
         <div class="pscopeitem">
           <div class="plabel">规模</div>
           <div class="pvalue">${scaleModels}、98 条模型层用例、
-            10 道 Agent 任务、2 个工具、单轮任务、单一模型供应商。</div>
+            10 道 Agent 任务、2 个工具、${esc(rTotal)} 条 RAG 用例与 ${esc(rLatest ? rLatest.doc_count : 14)} 段冻结知识库、
+            单轮任务、单一模型供应商。</div>
         </div>
         <div class="pscopeitem">
           <div class="plabel">未覆盖</div>
-          <div class="pvalue">多轮对话状态、RAG 场景、多步组合绕开；安全红队 30 条已按考点分两类判定（15 条排除检查 + 15 条安全裁判，裁判与被测同供应商）；
+          <div class="pvalue">多轮对话状态、多步组合绕开；RAG 层只覆盖固定管道（无条件检索再生成），
+            未覆盖 agentic RAG（模型自主决定是否检索 / 改写 query / 多跳）；安全红队 30 条已按考点分两类判定（15 条排除检查 + 15 条安全裁判，裁判与被测同供应商）；
             repeat=3 的一致性验证样本量有限，只能看抖动、不足以做统计结论。</div>
         </div>
         <div class="pscopeitem">
@@ -2229,7 +2353,8 @@ $app.addEventListener('click', e => {
 });
 
 // 路由入口：hash 形如 #<file>/<tab>，旧 #<file> 默认汇总；
-// 空 hash = 门户页（两层入口）；#llm 模型层原报告列表；#tests 用例详情；#agent Agent 评测
+// 空 hash = 门户页（三层入口）；#llm 模型层原报告列表；#tests 用例详情；
+// #agent Agent 评测；#rag RAG 评测
 async function main() {
   const hash = location.hash.slice(1);
   const isPortal = !hash || hash === '/';
@@ -2244,6 +2369,7 @@ async function main() {
     if (file === 'llm') return renderList(reports);
     if (file === 'tests') return renderTests();
     if (file === 'agent') return renderAgent();
+    if (file === 'rag') return renderRag();
     return renderDetail(decodeURIComponent(file), tab);
   } catch (e) {
     _showError(`main() 失败：${e.message || e}\n（hash="${hash}", file="${hash.split('/')[0]}", tab="${hash.split('/')[2] || 'summary'}"）`);
@@ -2633,6 +2759,88 @@ def load_agent_runs() -> list:
     return runs
 
 
+def _rag_time(stamp: str) -> str:
+    """文件名时间戳 `20261026-115958` → `2026-10-26 11:59:58`（与 Agent 层显示一致）。"""
+    try:
+        day, clock = stamp.split("-", 1)
+        return f"{day[:4]}-{day[4:6]}-{day[6:8]} {clock[:2]}:{clock[2:4]}:{clock[4:6]}"
+    except Exception:
+        return stamp
+
+
+def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
+    """把一份 RAG 结果 JSON 归一化成看板用的结构。
+
+    结果文件由 `rag_eval/run_eval.py` 写出（同源：既落模型层同款报告，也落这份
+    RAG 专属结果）。读失败返回 None——看板显示空状态，不崩页。
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    summary = data.get("summary") or []
+    first = summary[0] if summary else {}
+    kb = data.get("knowledge_base") or {}
+    retrieval = data.get("retrieval") or {}
+    models = data.get("models") or []
+    stamp = path.stem.replace("result-", "", 1)
+
+    entry = {
+        "file": path.name,
+        "time": _rag_time(stamp),
+        "archived": archived,
+        "models": models,
+        "model": models[0] if models else "—",
+        "top_k": data.get("top_k"),
+        "retriever": data.get("retriever") or "—",
+        "total": first.get("total", 0),
+        "passed": first.get("passed", 0),
+        "failed": first.get("failed", 0),
+        "skipped": first.get("skipped", 0),
+        "pass_rate": first.get("pass_rate", 0.0),
+        # 检索层：答错时先分清是「没检索到」还是「检索到了没用好」
+        "recall_at_k": retrieval.get("recall_at_k"),
+        "recall_k": retrieval.get("k"),
+        "recall_scored": retrieval.get("scored", 0),
+        "recall_hit": retrieval.get("hit", 0),
+        "doc_count": kb.get("doc_count"),
+        "kb_path": kb.get("path") or "",
+        "provenance": kb.get("provenance") or {},
+        "report_file": data.get("report_file") or "",
+        "notes": data.get("notes") or [],
+        "cases": data.get("cases") or [] if with_cases else [],
+    }
+    return entry
+
+
+def load_rag_runs() -> list:
+    """扫描 rag_eval/results/（含 archive/）下的 result-*.json，按时间倒序。
+
+    目录不存在（部署沙盒里没有 rag_eval/）返回空列表，看板显示空状态而不是崩。
+    逐题明细只给最新一次（体积考虑），历史行 cases 为空，页面显示摘要即可。
+    """
+    if not RAG_RESULTS_DIR.is_dir():
+        return []
+    paths = [(p, False) for p in RAG_RESULTS_DIR.glob("result-*.json")]
+    if RAG_ARCHIVE_DIR.is_dir():
+        paths += [(p, True) for p in RAG_ARCHIVE_DIR.glob("result-*.json")]
+
+    pairs = []
+    for path, archived in paths:
+        entry = _rag_entry(path, archived)
+        if entry:
+            pairs.append((entry, path, archived))
+    pairs.sort(key=lambda x: _time_key(x[0]["time"]), reverse=True)
+    runs = [p[0] for p in pairs]
+    if pairs:
+        entry, path, archived = pairs[0]
+        runs[0] = _rag_entry(path, archived, with_cases=True) or runs[0]
+    return runs
+
+
 def _load_tests_detail():
     """读取 pytest 用例明细（dashboard/data/tests-detail.json）。
 
@@ -2681,6 +2889,9 @@ class Handler(SimpleHTTPRequestHandler):
             runs = load_agent_runs()
             self._json({"latest": runs[0] if runs else None, "runs": runs,
                         "data_source": _agent_data_source()})
+        elif path in ("/api/rag", "/api/rag.json"):
+            runs = load_rag_runs()
+            self._json({"latest": runs[0] if runs else None, "runs": runs})
         elif path.startswith("/api/agent/report/"):
             # Agent 评测的 HTML 报告：走 API 而不是直接链 agent_eval/ 下的文件，
             # 这样动态服务与静态导出（build_static 会把它写进 dist/api/agent/report/）

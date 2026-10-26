@@ -165,7 +165,9 @@ class TestBackLinks:
         assert total == to_llm, f"{total - to_llm} 个返回链接没指向 #llm"
 
     def test_layer_pages_have_back_to_portal(self) -> None:
-        """#llm / #agent 两个层级页各一个「返回实验室首页」（指向空 hash 门户）。"""
-        # 详情页与 #tests 是三层深，仍回 #llm；层级页回门户，两者并存
-        assert app.PAGE.count('href="#">← 返回实验室首页</a>') == 2
+        """#llm / #agent / #rag 三个层级页各一个「返回实验室首页」（指向空 hash 门户）。"""
+        # 详情页与 #tests 是三层深，仍回 #llm；层级页回门户，两者并存。
+        # 计数跟着层数走：新增一层就应多一个返回链接（当初写死 2，加 RAG 层时就误报了一次）。
+        layer_pages = ('#llm', '#agent', '#rag')
+        assert app.PAGE.count('href="#">← 返回实验室首页</a>') == len(layer_pages)
         assert "← 返回实验室首页" in app.PAGE

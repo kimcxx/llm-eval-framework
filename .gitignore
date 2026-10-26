@@ -42,3 +42,10 @@ agent_eval/reports/*.html
 # run_eval.py 自动往里堆，进库只会无限膨胀。
 # 详见 agent_eval/results/README.md
 agent_eval/results/archive/
+
+# ---- RAG 评测运行产物（rag_eval/）----
+# 与 Agent 层同款约定：最新一份正式结果入库（供看板读取），
+# results/archive/ 的历史结果不入库（随时能重跑，进库只会无限膨胀）。
+rag_eval/results/archive/
+# 检索层结果（--retrieval-only 的产物）：不调模型、随时能重跑，不入库。
+rag_eval/results/retrieval-*.json

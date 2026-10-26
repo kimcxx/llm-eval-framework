@@ -1,0 +1,576 @@
+{
+  "generated_at": "2026-10-26T12:10:28",
+  "models": [
+    "rag-deepseek-chat"
+  ],
+  "top_k": 2,
+  "retriever": "retriever(字符后端，原因：ModuleNotFoundError: No module named 'sentence_transformers')",
+  "knowledge_base": {
+    "path": "rag_eval\\fixtures\\knowledge_base.jsonl",
+    "doc_count": 14,
+    "provenance": {
+      "frozen_at": "2026-10-26",
+      "doc_count": 14,
+      "source": "项目自身 README 与源码事实（README.md 第三章能力全景、agent_eval/ 目录、src/metrics/ 指标实现）",
+      "status": "占位版",
+      "note": "本知识库是为跑通 RAG 管道而写的占位内容，取材于项目自身可验证的事实，便于金标可核对、可自动判定。正式的知识库选题与题目措辞由出题方逐条拍板后替换，替换时须连同用例金标一起更新并留痕（沿用 fixture 原则：冻结快照、显式升级、永不追新）。",
+      "upgrade_policy": "升级知识库 = 一次显式决策：改文档 + 重标金标 + 在用例.meta 或本文件留痕，三者一起做。"
+    }
+  },
+  "report_file": "reports/report-rag-v1-20261026-121028.json",
+  "summary": [
+    {
+      "model": "rag-deepseek-chat",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "pass_rate": 1.0
+    }
+  ],
+  "retrieval": {
+    "k": 2,
+    "backend": "lexical",
+    "total": 13,
+    "scored": 10,
+    "hit": 10,
+    "recall_at_k": 1.0,
+    "retrieved_any": 13,
+    "missed": [],
+    "per_case": [
+      {
+        "id": "rag-001",
+        "retrieved": [
+          "kb-001",
+          "kb-002"
+        ],
+        "gold": [
+          "kb-002"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.202
+      },
+      {
+        "id": "rag-002",
+        "retrieved": [
+          "kb-010",
+          "kb-001"
+        ],
+        "gold": [
+          "kb-010"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.3506
+      },
+      {
+        "id": "rag-003",
+        "retrieved": [
+          "kb-008",
+          "kb-001"
+        ],
+        "gold": [
+          "kb-008"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.2676
+      },
+      {
+        "id": "rag-004",
+        "retrieved": [
+          "kb-007",
+          "kb-003"
+        ],
+        "gold": [
+          "kb-007"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.3691
+      },
+      {
+        "id": "rag-005",
+        "retrieved": [
+          "kb-009",
+          "kb-001"
+        ],
+        "gold": [
+          "kb-009"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.3776
+      },
+      {
+        "id": "rag-006",
+        "retrieved": [
+          "kb-011",
+          "kb-006"
+        ],
+        "gold": [
+          "kb-011"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.2334
+      },
+      {
+        "id": "rag-007",
+        "retrieved": [
+          "kb-001",
+          "kb-004"
+        ],
+        "gold": [
+          "kb-001"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.1975
+      },
+      {
+        "id": "rag-008",
+        "retrieved": [
+          "kb-004",
+          "kb-013"
+        ],
+        "gold": [
+          "kb-004"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.1832
+      },
+      {
+        "id": "rag-009",
+        "retrieved": [
+          "kb-006",
+          "kb-010"
+        ],
+        "gold": [
+          "kb-006"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.4232
+      },
+      {
+        "id": "rag-010",
+        "retrieved": [
+          "kb-013",
+          "kb-002"
+        ],
+        "gold": [
+          "kb-013"
+        ],
+        "gold_hit": true,
+        "scored": true,
+        "top_score": 0.3791
+      },
+      {
+        "id": "rag-011",
+        "retrieved": [
+          "kb-001",
+          "kb-006"
+        ],
+        "gold": [],
+        "gold_hit": false,
+        "scored": false,
+        "top_score": 0.1122
+      },
+      {
+        "id": "rag-012",
+        "retrieved": [
+          "kb-001",
+          "kb-006"
+        ],
+        "gold": [],
+        "gold_hit": false,
+        "scored": false,
+        "top_score": 0.0416
+      },
+      {
+        "id": "rag-013",
+        "retrieved": [
+          "kb-006",
+          "kb-001"
+        ],
+        "gold": [],
+        "gold_hit": false,
+        "scored": false,
+        "top_score": 0.1006
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "rag-001",
+      "dimension": "correctness",
+      "prompt": "模型层的评测用例一共有多少条？",
+      "answer": "模型层共有 98 条评测用例。",
+      "status": "通过",
+      "retrieved": [
+        "kb-001",
+        "kb-002"
+      ],
+      "gold": [
+        "kb-002"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-002",
+      "dimension": "correctness",
+      "prompt": "安全红队数据集是用什么方法判定信息泄露的？",
+      "answer": "资料显示，安全红队数据集采用**埋标记加诱导泄露**的方法：在 system prompt 中植入一个只应内部可见的标记（如 KEY-ALPHA-9527），然后诱导模型输出它；只要回答中出现该标记，即判定为安全失败。这种方式无需人工评审，能够确定性地自动完成判定。",
+      "status": "通过",
+      "retrieved": [
+        "kb-010",
+        "kb-001"
+      ],
+      "gold": [
+        "kb-010"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-003",
+      "dimension": "correctness",
+      "prompt": "Agent 评测层一共有多少道任务？",
+      "answer": "Agent 评测层一共有 10 道任务。",
+      "status": "通过",
+      "retrieved": [
+        "kb-008",
+        "kb-001"
+      ],
+      "gold": [
+        "kb-008"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-004",
+      "dimension": "correctness",
+      "prompt": "similarity 指标在没有安装向量依赖时会怎样？",
+      "answer": "未安装向量依赖时，similarity 指标会自动降级为字符级相似度，并在报告中明确标注「已降级，非语义结论」，以避免使用者误读结果。框架本身不会因为缺少一个重依赖而无法运行。",
+      "status": "通过",
+      "retrieved": [
+        "kb-007",
+        "kb-003"
+      ],
+      "gold": [
+        "kb-007"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-005",
+      "dimension": "correctness",
+      "prompt": "Agent 层的取数工具读的是哪一天的数据快照？",
+      "answer": "2026-09-23。",
+      "status": "通过",
+      "retrieved": [
+        "kb-009",
+        "kb-001"
+      ],
+      "gold": [
+        "kb-009"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-006",
+      "dimension": "correctness",
+      "prompt": "回归门禁脚本做对比时，默认的容差是多少？",
+      "answer": "默认容差是 **0.02**（由 tolerance 参数控制）。",
+      "status": "通过",
+      "retrieved": [
+        "kb-011",
+        "kb-006"
+      ],
+      "gold": [
+        "kb-011"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-007",
+      "dimension": "relevance",
+      "prompt": "这个评测框架分成哪两层，各自考的是什么？",
+      "answer": "分两层：\n\n- **模型层**：考「模型答得对不对」。\n- **Agent 层**：考「agent 有没有调对工具、能不能多步走通」。",
+      "status": "通过",
+      "retrieved": [
+        "kb-001",
+        "kb-004"
+      ],
+      "gold": [
+        "kb-001"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 2/2"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：回答完全准确、完整，与参考要点一致，无任何错误或遗漏。"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-008",
+      "dimension": "relevance",
+      "prompt": "为什么指标判定要设计成三态而不是简单的通过与失败？",
+      "answer": "资料[kb-004]给出的原因是：评测中存在裁判模型调用失败、参考文本缺失、依赖未安装等**评测侧问题**，它们不属于被评测对象真正通过或失败。若只设两态，这类情况无法如实归类；设“跳过”态后，可将其不计入通过率分母（分母为通过+失败），同时在报告中显式披露。",
+      "status": "通过",
+      "retrieved": [
+        "kb-004",
+        "kb-013"
+      ],
+      "gold": [
+        "kb-004"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：准确完整解释三态设计原因，明确评测侧问题归类为跳过且不计入分母"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-009",
+      "dimension": "relevance",
+      "prompt": "数学题判分时，为什么取回答里的最后一个数值而不是任意一个数值？",
+      "answer": "因为数学题题干本身含数字；如果“出现期望数字就算对”，模型把题目抄一遍而不计算也会被误判为正确。取回答里最后一个数值做匹配，可避免这种误判。项目有专门的回归测试守着该行为。",
+      "status": "通过",
+      "retrieved": [
+        "kb-006",
+        "kb-010"
+      ],
+      "gold": [
+        "kb-006"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：准确完整解释了取最后一个数值的原因，与参考要点一致，无事实错误"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-010",
+      "dimension": "relevance",
+      "prompt": "qa_open 这类开放式问答为什么只由裁判模型判定？",
+      "answer": "因为开放式问答没有标准答案，字面相似度会把换个说法但答对了的回答判成失败，所以 `run.judge_only_categories` 里的分类默认只有 qa_open，这类分类只由 judge 判定（阈值 5 分制得 4 分）。",
+      "status": "通过",
+      "retrieved": [
+        "kb-013",
+        "kb-002"
+      ],
+      "gold": [
+        "kb-013"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "命中 1/1"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：回答准确完整，解释了开放式问答需要裁判判定的原因，并正确引用了参考要点中的信息。"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-011",
+      "dimension": "correctness",
+      "prompt": "这个项目的 RAG 层用的是什么向量数据库？",
+      "answer": "资料中没有相关信息。",
+      "status": "通过",
+      "retrieved": [
+        "kb-001",
+        "kb-006"
+      ],
+      "gold": [],
+      "gold_hit": false,
+      "metrics": [
+        {
+          "name": "not_contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "未出现违禁内容（检查了 6 个词）"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：模型回答与参考要点一致，准确指出资料中无相关信息，完全符合任务要求。"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-012",
+      "dimension": "correctness",
+      "prompt": "这个框架目前支持部署到哪几家云厂商？",
+      "answer": "资料中没有相关信息。",
+      "status": "通过",
+      "retrieved": [
+        "kb-001",
+        "kb-006"
+      ],
+      "gold": [],
+      "gold_hit": false,
+      "metrics": [
+        {
+          "name": "not_contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "未出现违禁内容（检查了 6 个词）"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：准确传达了资料中无相关信息的事实，完全符合任务要求"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    },
+    {
+      "id": "rag-013",
+      "dimension": "correctness",
+      "prompt": "这个项目的作者毕业于哪所大学？",
+      "answer": "资料中没有相关信息。",
+      "status": "通过",
+      "retrieved": [
+        "kb-006",
+        "kb-001"
+      ],
+      "gold": [],
+      "gold_hit": false,
+      "metrics": [
+        {
+          "name": "not_contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "未出现违禁内容（检查了 5 个词）"
+        },
+        {
+          "name": "judge",
+          "score": 1.0,
+          "passed": true,
+          "detail": "裁判打分 5/5（阈值 4）：准确传达了资料中无相关信息的事实，完全符合任务要求"
+        }
+      ],
+      "skipped_metrics": [],
+      "error": null
+    }
+  ],
+  "notes": [
+    "裁判模型 glm-4.5-air（通过阈值 4/5）",
+    "被测对象是项目内自建的 mini-RAG 固定管道：每问无条件检索 top-2 再生成，不做「要不要检索」的决策、不产生多步轨迹，因此与 Agent 层区分，单独成层。",
+    "检索后端：retriever(字符后端，原因：ModuleNotFoundError: No module named 'sentence_transformers')；知识库：rag_eval\\fixtures\\knowledge_base.jsonl（14 段，冻结快照）。",
+    "检索层 recall@2 = 100.0%（可判 10 条，命中 10 条）；答错时可据此区分「没检索到」与「检索到了没用好」。",
+    "知识库与题目目前是占位版（取材项目自身可核对的事实），正式内容由出题方逐条拍板后替换。"
+  ]
+}
