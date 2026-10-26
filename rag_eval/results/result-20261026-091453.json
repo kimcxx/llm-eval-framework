@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-26T08:25:33",
+  "generated_at": "2026-10-26T09:14:53",
   "models": [
     "rag-mock-baseline"
   ],
   "top_k": 2,
-  "retriever": "retriever(字符后端（未启用向量）)",
+  "retriever": "retriever(字符后端（降级）)",
   "knowledge_base": {
     "path": "rag_eval/fixtures/knowledge_base.jsonl",
     "doc_count": 14,
@@ -17,7 +17,7 @@
       "upgrade_policy": "升级知识库 = 一次显式决策：改文档 + 重标金标 + 在用例.meta 或本文件留痕，三者一起做。"
     }
   },
-  "report_file": "reports/report-cd-rag-20261026-082533.json",
+  "report_file": "reports/report-cd-rag-20261026-091453.json",
   "summary": [
     {
       "model": "rag-mock-baseline",
@@ -541,7 +541,7 @@
   "notes": [
     "未配置可用裁判模型，judge 指标已被跳过",
     "被测对象是项目内自建的 mini-RAG 固定管道：每问无条件检索 top-2 再生成，不做「要不要检索」的决策、不产生多步轨迹，因此与 Agent 层区分，单独成层。",
-    "检索后端：retriever(字符后端（未启用向量）)；知识库：rag_eval/fixtures/knowledge_base.jsonl（14 段，冻结快照）。",
+    "检索后端：retriever(字符后端（降级）)；知识库：rag_eval/fixtures/knowledge_base.jsonl（14 段，冻结快照）。",
     "检索层 recall@2 = 100.0%（可判 10 条，命中 10 条）；答错时可据此区分「没检索到」与「检索到了没用好」。",
     "知识库与题目目前是占位版（取材项目自身可核对的事实），正式内容由出题方逐条拍板后替换。"
   ]
