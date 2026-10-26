@@ -1285,7 +1285,11 @@ function ragCaseRow(c) {
 async function renderRag() {
   const a = await fetch('api/rag.json').then(r => r && r.ok ? r.json() : null).catch(() => null);
   const runs = (a && a.runs) || [];
+  // latest 是「最近一次真实模型的跑」（后端已跳过 mock 自检）；latest_any 是最近一次跑（可能是自检）
   const latest = (a && a.latest) || null;
+  const latestAny = (a && a.latest_any) || null;
+  const onlySelfcheck = !latest && !!latestAny;
+  const selfcheckIsNewer = !!(latest && latestAny && latestAny.is_mock && latestAny.file !== latest.file);
   const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
       <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
   const cases = (latest && latest.cases) || [];
@@ -1298,9 +1302,10 @@ async function renderRag() {
       不做「要不要检索」的决策、不产生多步轨迹——所以它是独立的一层，不是 Agent 层的子集。</div>
     ${latest ? `
     <div class="card">
-      <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+      <div class="hint">最新一次（真实模型）：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
         · 被测对象 <b>${esc(latest.model || '—')}</b>
-        · ${esc(latest.file)}${latest.report_file ? ` · <span class="catname">${esc(latest.report_file)}</span>` : ''}</div>
+        · ${esc(latest.file)}${latest.report_file ? ` · <span class="catname">${esc(latest.report_file)}</span>` : ''}
+        ${selfcheckIsNewer ? `<br>另有 ${esc(latestAny.time)} 的自检跑（<code>${esc(latestAny.model || 'mock')}</code>，阴性对照，不进成绩），见下方历史结果。` : ''}</div>
       <div class="grid" style="margin-bottom:4px">
         ${statHtml('任务通过率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过${Number(latest.skipped || 0) ? ` · ${esc(latest.skipped)} 跳过` : ''}</div>`, rateColor(latest.pass_rate || 0))}
         ${statHtml(`检索层 recall@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
@@ -1318,14 +1323,20 @@ async function renderRag() {
         ${cases.map(ragCaseRow).join('') || `<tr><td colspan="7" class="empty">暂无明细</td></tr>`}
       </table>
     </div>
+    </div>` : `
+    <div class="card"><div class="sub" style="margin:0">${onlySelfcheck
+      ? `目前只有自检跑（<code>${esc(latestAny.model || 'mock')}</code>，${esc(latestAny.time)}）——它是管道阴性对照，不算成绩。跑一次真实模型：<code>python rag_eval/run_eval.py --models deepseek-chat</code>。`
+      : `暂无结果。先跑 <code>python rag_eval/run_eval.py</code>（零成本冒烟：<code>--models mock-baseline --no-embedding</code>）生成 <code>rag_eval/results/result-*.json</code>。`}</div></div>`}
+    ${runs.length ? `
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
+      <div class="hint">标「自检」的是 mock 模型跑的管道阴性对照——它答不对是预期行为，不进成绩，只用来证明管道活着。</div>
       <table>
         <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>recall@k</th><th>状态</th></tr>
         ${runs.map(r => `
           <tr>
             <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
-            <td><span class="badge">${esc(r.model || '—')}</span></td>
+            <td><span class="badge">${esc(r.model || '—')}</span>${r.is_mock ? ' <span class="catname">自检 · 阴性对照</span>' : ''}</td>
             ${rateCell(r.pass_rate || 0)}
             <td class="catname">${r.recall_at_k === undefined || r.recall_at_k === null ? '—' : pct(r.recall_at_k)}</td>
             <td>${Number(r.failed || 0) === 0
@@ -1334,11 +1345,7 @@ async function renderRag() {
               <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
           </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
       </table>
-    </div>` : `
-    <div class="card"><div class="sub" style="margin:0">暂无结果。先跑
-      <code>python rag_eval/run_eval.py</code>（零成本冒烟：
-      <code>--models mock-baseline --no-embedding</code>）生成
-      <code>rag_eval/results/result-*.json</code>。</div></div>`}`;
+    </div>` : ``}`;
 }
 
 // Agent 逐题明细：4 个汇总数字回答不了「哪道题挂了、为什么挂」——10/10 全绿和 0/10 全红
@@ -1523,7 +1530,10 @@ async function renderPortal(reports) {
       : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
 
   // RAG 层：第三张卡。口径同 #rag 页——检索层与生成层分开看，才能归因。
+  // RAG「最新成绩」取最近一次真实模型的跑（后端 pick_latest_real_run 已跳过 mock 自检）
   const rLatest = (rag && rag.latest) || null;
+  const rAny = (rag && rag.latest_any) || null;
+  const rOnlySelfcheck = !rLatest && !!rAny;   // 只有自检跑，还没有真实模型的成绩
   const rTotal = rLatest ? rLatest.total : 13;
   const ragCard = `
       <div class="ptitle">RAG 层评测</div>
@@ -1533,7 +1543,9 @@ async function renderPortal(reports) {
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(rLatest.pass_rate || 0)}">${esc(rLatest.passed ?? 0)}/${esc(rLatest.total ?? 0)}</b></span>
         <span class="pchip">recall@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
         <span class="pwhen">${esc(fmtTime(rLatest.time))}</span>`)
-      : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
+      : sec('最新成绩', rOnlySelfcheck
+          ? `<span class="pwhen">暂无真实模型成绩（最近一次 ${esc(fmtTime(rAny.time))} 是自检跑，不进成绩）</span>`
+          : `<span class="pwhen">暂无结果</span>`)}`;
 
   $app.innerHTML = `
     <h1>LLM &amp; Agent &amp; RAG 评测实验室</h1>
@@ -2780,6 +2792,16 @@ def _rag_time(stamp: str) -> str:
         return stamp
 
 
+def _is_rag_mock(models) -> bool:
+    """这份 RAG 跑是不是自检跑（mock 模型）？
+
+    RAG 层的模型名带 `rag-` 前缀（`rag-deepseek-chat` / `rag-mock-baseline`），
+    判断前先剥掉前缀，再按模型层同款规矩认 `mock-`。
+    """
+    name = str((models or [""])[0])
+    return name.removeprefix("rag-").startswith("mock-")
+
+
 def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
     """把一份 RAG 结果 JSON 归一化成看板用的结构。
 
@@ -2806,6 +2828,8 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
         "archived": archived,
         "models": models,
         "model": models[0] if models else "—",
+        # 自检跑（mock 模型）是阴性对照，不是被测对象——看板据此决定它能不能进「最新成绩」
+        "is_mock": _is_rag_mock(models),
         "top_k": data.get("top_k"),
         "retriever": data.get("retriever") or "—",
         "total": first.get("total", 0),
@@ -2847,10 +2871,25 @@ def load_rag_runs() -> list:
             pairs.append((entry, path, archived))
     pairs.sort(key=lambda x: _time_key(x[0]["time"]), reverse=True)
     runs = [p[0] for p in pairs]
-    if pairs:
-        entry, path, archived = pairs[0]
-        runs[0] = _rag_entry(path, archived, with_cases=True) or runs[0]
+    # 逐题明细跟着「最新一次真实模型跑」走，而不是「最新一次跑」——
+    # 否则一次 mock 自检就会把逐题明细顶掉（它 0/13，没有可看的东西）。
+    idx = next((i for i, e in enumerate(runs) if not e.get("is_mock")), None)
+    if idx is not None:
+        entry, path, archived = pairs[idx]
+        runs[idx] = _rag_entry(path, archived, with_cases=True) or runs[idx]
     return runs
+
+
+def pick_latest_real_run(runs: list):
+    """「被测对象 / 最新成绩」取最近一次**真实模型**的跑，跳过 mock-* 自检。
+
+    与模型层同款规矩（mock-* 是管道基线，不进通过率排名）：自检跑 13 条全挂是
+    **预期行为**（假模型本来答不对），把它当成绩展示等于向访问者宣称「RAG 层全挂」。
+    """
+    for r in runs:
+        if not r.get("is_mock"):
+            return r
+    return None
 
 
 def _load_tests_detail():
@@ -2903,7 +2942,13 @@ class Handler(SimpleHTTPRequestHandler):
                         "data_source": _agent_data_source()})
         elif path in ("/api/rag", "/api/rag.json"):
             runs = load_rag_runs()
-            self._json({"latest": runs[0] if runs else None, "runs": runs})
+            self._json({
+                # latest = 最近一次真实模型的跑（mock 自检不进成绩，见 pick_latest_real_run）；
+                # latest_any 保留「最近一次跑」原样，供页面说明「还有一次更新的自检跑」
+                "latest": pick_latest_real_run(runs),
+                "runs": runs,
+                "latest_any": runs[0] if runs else None,
+            })
         elif path.startswith("/api/agent/report/"):
             # Agent 评测的 HTML 报告：走 API 而不是直接链 agent_eval/ 下的文件，
             # 这样动态服务与静态导出（build_static 会把它写进 dist/api/agent/report/）
