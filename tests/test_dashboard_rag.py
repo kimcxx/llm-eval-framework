@@ -91,6 +91,91 @@ class TestRagRuns:
         assert len(app.load_rag_runs()) == 2, "坏文件应被跳过而不是让整页崩掉"
 
 
+def _selfcheck_result(passed: int = 0, total: int = 13) -> dict:
+    """mock 自检跑的结果：0/13 是假模型的预期行为，不是成绩。"""
+    data = _result(total=total, passed=passed)
+    data["models"] = ["rag-mock-baseline"]
+    data["summary"] = [
+        {
+            "model": "rag-mock-baseline",
+            "total": total,
+            "passed": passed,
+            "failed": total - passed,
+            "skipped": 0,
+            "pass_rate": passed / total,
+        }
+    ]
+    data["cases"] = [{"id": "rag-001", "status": "失败", "retrieved": ["kb-002"], "gold": ["kb-002"]}]
+    return data
+
+
+class TestSelfcheckIsNotAScore:
+    """mock 自检跑是管道阴性对照，不能当「被测对象 / 最新成绩」展示。
+
+    2026-10-26 工单：看板把 `rag-mock-baseline` 的 0/13 当成 RAG 层成绩，
+    访问者（包括面试官）会读成「RAG 层全挂」——而 0/13 是假模型的预期行为，
+    与模型层既有规矩（mock-* 不进通过率排名）直接冲突。
+    """
+
+    @staticmethod
+    def _env(tmp_path: Path, monkeypatch, files: dict[str, dict]) -> Path:
+        results = tmp_path / "results"
+        (results / "archive").mkdir(parents=True)
+        for name, payload in files.items():
+            (results / name).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(app, "RAG_RESULTS_DIR", results)
+        monkeypatch.setattr(app, "RAG_ARCHIVE_DIR", results / "archive")
+        return results
+
+    def test_latest_skips_mock_runs(self, tmp_path: Path, monkeypatch) -> None:
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261026-120000.json": _result(),
+                "result-20261026-140000.json": _selfcheck_result(),
+            },
+        )
+        runs = app.load_rag_runs()
+        assert runs[0]["model"] == "rag-mock-baseline", "历史表按时间倒序，自检跑要看得见"
+        assert runs[0]["is_mock"] is True
+        latest = app.pick_latest_real_run(runs)
+        assert latest is not None, "有真跑就必须取到真跑，不能因为自检跑更新就顶掉"
+        assert latest["model"] == "rag-deepseek-chat"
+        assert latest["is_mock"] is False
+
+    def test_cases_follow_the_real_run(self, tmp_path: Path, monkeypatch) -> None:
+        """逐题明细跟着真跑走：0/13 的自检明细没有可看的东西。"""
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261026-120000.json": _result(),
+                "result-20261026-140000.json": _selfcheck_result(),
+            },
+        )
+        runs = app.load_rag_runs()
+        latest = app.pick_latest_real_run(runs)
+        assert len(latest["cases"]) == 1, "真跑那份要带逐题明细"
+        assert runs[0]["cases"] == [], "自检跑不该占用逐题明细"
+
+    def test_only_selfcheck_has_no_score(self, tmp_path: Path, monkeypatch) -> None:
+        """只有自检跑时，页面显示「暂无真实模型成绩」而不是把 0/13 当成绩。"""
+        self._env(tmp_path, monkeypatch, {"result-20261026-140000.json": _selfcheck_result()})
+        runs = app.load_rag_runs()
+        assert len(runs) == 1
+        assert app.pick_latest_real_run(runs) is None
+
+    def test_mock_prefix_stripped_before_check(self) -> None:
+        assert app._is_rag_mock(["rag-mock-baseline"]) is True
+        assert app._is_rag_mock(["rag-deepseek-chat"]) is False
+        assert app._is_rag_mock([]) is False
+
+    def test_page_marks_selfcheck_runs(self) -> None:
+        assert "自检 · 阴性对照" in app.PAGE, "历史表要标明哪些行是自检跑"
+        assert "最新一次（真实模型）" in app.PAGE, "卡片要写明取的是真实模型的跑"
+
+
 class TestRagPortalWiring:
 
     def test_page_has_rag_route_and_card(self) -> None:

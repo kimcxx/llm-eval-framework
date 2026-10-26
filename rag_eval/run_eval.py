@@ -83,10 +83,13 @@ def rel_or_abs(path: Path) -> str:
 def archive_previous(current: Path) -> None:
     """把 results/ 里的旧结果移进 archive/（与 Agent 层同款约定）。
 
-    新结果先落盘再归档，避免中途失败把历史也弄丢。
+    在**新跑开始时**调用（不是跑完才归档）：上一份结果必须先归位，新结果才能落盘——
+    顺序反了的话，一次失败/中断的跑就会把历史顶掉（"跑完再归档"看着更稳，
+    但中途崩溃时新文件已写一半，旧的却还在原位等着被下一次覆盖）。
+    归档 = 移动不是删除，历史永远找得回来。
     """
-    if not current.exists():
-        return
+    # 注意：不要在开头加 `if not current.exists(): return`。归档是在**新跑开始时**
+    # 调的，那一刻新文件必然还不存在——加了这句等于永远不归档（历史被静静覆盖）。
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     for old in sorted(RESULTS_DIR.glob("result-*.json")):
         if old.name == current.name:
@@ -172,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"检索层结果已写入 {rel_or_abs(target)}（未调用任何模型）")
         return 0
+
+    # 新跑开始前先给上一份结果归位：不许覆盖、不许删除（见 archive_previous 的说明）。
+    archive_previous(RESULTS_DIR / f"result-{stamp}.json")
 
     raw_clients = build_clients(config, args.models, strict=args.strict)
     if not raw_clients:
@@ -275,7 +281,6 @@ def main(argv: list[str] | None = None) -> int:
         "notes": report.notes,
     }
     result_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    archive_previous(result_file)
 
     print(f"\nRAG 层结果：{rel_or_abs(result_file)}")
     print(f"模型层同款报告：{rel_or_abs(report_file)}")

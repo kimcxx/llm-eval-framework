@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -299,3 +300,54 @@ class TestRagCasesDataset:
         assert len(answerable) >= 5, "端到端命中类至少 5 条"
         assert len(honest) >= 3, "无答案诚实类至少 3 条"
         assert len(judged) >= 3, "忠实度/诚实类应交裁判裁"
+
+
+# --------------------------------------------------------------------------- #
+# 5. 归档：历史结果不许丢
+# --------------------------------------------------------------------------- #
+class TestArchivePrevious:
+    """上一份 result 必须进 archive，而不是被覆盖或删掉。
+
+    2026-10-26 的教训：一次跑曾经让 12:10 的真跑结果「消失」——归档是移动不是删除，
+    顺序上还得在新跑**开始时**就归位，否则失败/中断的跑会顶掉历史。
+    """
+
+    def test_previous_moved_into_archive(self, tmp_path: Path, monkeypatch) -> None:
+        from rag_eval import run_eval
+
+        results = tmp_path / "results"
+        results.mkdir()
+        old = results / "result-20261026-120000.json"
+        old.write_text('{"keep": true}', encoding="utf-8")
+        monkeypatch.setattr(run_eval, "RESULTS_DIR", results)
+        monkeypatch.setattr(run_eval, "ARCHIVE_DIR", results / "archive")
+
+        run_eval.archive_previous(results / "result-20261026-140000.json")
+
+        assert not old.exists(), "上一份不该还留在 results/ 顶层等着被覆盖"
+        moved = results / "archive" / "result-20261026-120000.json"
+        assert moved.exists(), "上一份必须进 archive（移动，不是删除）"
+        assert json.loads(moved.read_text(encoding="utf-8")) == {"keep": True}
+
+    def test_current_file_is_never_archived(self, tmp_path: Path, monkeypatch) -> None:
+        """正在写的这一份不能被自己归档掉。"""
+        from rag_eval import run_eval
+
+        results = tmp_path / "results"
+        results.mkdir()
+        current = results / "result-20261026-140000.json"
+        current.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(run_eval, "RESULTS_DIR", results)
+        monkeypatch.setattr(run_eval, "ARCHIVE_DIR", results / "archive")
+
+        run_eval.archive_previous(current)
+        assert current.exists()
+
+    def test_no_previous_is_fine(self, tmp_path: Path, monkeypatch) -> None:
+        from rag_eval import run_eval
+
+        results = tmp_path / "results"
+        results.mkdir()
+        monkeypatch.setattr(run_eval, "RESULTS_DIR", results)
+        monkeypatch.setattr(run_eval, "ARCHIVE_DIR", results / "archive")
+        run_eval.archive_previous(results / "result-20261026-140000.json")  # 不抛异常即可
