@@ -839,7 +839,9 @@ const $drawerBody = document.getElementById('drawerBody');
 const $drawerClose = document.getElementById('drawerClose');
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const pct = x => (x * 100).toFixed(1) + '%';
+// 缺字段/除零时显示「—」而不是 NaN%：页面上一个 NaN 会让整张卡的可信度归零，
+// 而「没这个数」和「这个数是 0」是两回事，必须分开表达。
+const pct = x => (Number.isFinite(Number(x)) ? (Number(x) * 100).toFixed(1) + '%' : '—');
 // 维度中文标签 / 分类→维度映射：由 Python 侧注入（与 _BANNER_DIM_LABELS /
 // CATEGORY_DIMENSION 是同一份数据），首页速览、详情页维度表、banner 共用一套口径
 const DIM_LABELS = __DIM_LABELS__;
@@ -2417,12 +2419,30 @@ PAGE = (
 )
 
 
+# 文件名里带这些标记的报告**不是模型层报告**，不进模型层的列表/卡片。
+# RAG 层的报告也写在 reports/ 下（`report-rag-v1-*.json`，模型名 `rag-deepseek-chat`），
+# 混进模型层列表会让它顶掉真正的模型层报告——卡片于是显示 rag-mock-baseline / NaN%。
+# 与 Q6「模型层自检数据集不含 rag_cases」是同一条口径：模型层只吃模型层的东西。
+NON_MODEL_REPORT_MARKS = ("rag",)
+# CI 测试摘要/明细不是评测报告
+NON_REPORT_FILES = ("tests-summary.json", "tests-detail.json")
+
+
+def _is_model_layer_report(name: str) -> bool:
+    """这份报告是不是模型层的？（排除规则只此一处，别在调用点散写 if。）"""
+    lowered = name.lower()
+    if lowered in NON_REPORT_FILES:
+        return False
+    return not any(mark in lowered for mark in NON_MODEL_REPORT_MARKS)
+
+
 def _load_reports():
     """扫描 reports/*.json，返回按时间倒序的元数据列表。"""
     items = []
     for p in sorted(REPORTS_DIR.glob("*.json")):
-        # CI 测试摘要/明细不是评测报告，不进列表（否则会出现 model=?/用例=0 的幽灵条目）
-        if p.name in ("tests-summary.json", "tests-detail.json"):
+        # CI 测试摘要/明细不是评测报告，不进列表（否则会出现 model=?/用例=0 的幽灵条目）；
+        # 同理排除 RAG 层报告——它是另一层的成绩，不是模型层的。
+        if not _is_model_layer_report(p.name):
             continue
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
