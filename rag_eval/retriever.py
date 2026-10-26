@@ -139,7 +139,14 @@ class Retriever:
         return COVERAGE_WEIGHT * coverage + JACCARD_WEIGHT * jaccard
 
     def describe(self) -> str:
+        """给人看的一句话说明（**不含异常原文**）。
+
+        降级原因的原文（如 `ModuleNotFoundError: No module named 'sentence_transformers'`）
+        是排查用的，只在 ``init_error`` 里、由 run_eval 写进报告 JSON 的 notes。
+        describe() 会被看板直接渲染到卡片上——把异常名和路径糊到页面上，
+        读者只会看到「一堆报错」，看不出「现在是字符后端在跑、结论不是语义级的」。
+        """
         if self.backend == "embedding":
             return f"retriever(向量后端 {self.model_name})"
-        reason = f"，原因：{self.init_error}" if self.init_error else "（未启用向量）"
-        return f"retriever(字符后端{reason})"
+        # 主动关掉向量（--no-embedding）与装不上被迫降级，都是「字符后端」，统一标「降级」
+        return "retriever(字符后端（降级）)"

@@ -220,6 +220,13 @@ def main(argv: list[str] | None = None) -> int:
         "因此与 Agent 层区分，单独成层。",
         f"检索后端：{retriever.describe()}；知识库："
         f"{rel_or_abs(Path('rag_eval/fixtures/knowledge_base.jsonl'))}（{len(docs)} 段，冻结快照）。",
+        # 降级原因的异常原文**只留在报告 JSON 的 notes 里**：卡片上放原文等于糊一堆报错，
+        # 排查时要看原文的人自然会翻 notes。
+        *(
+            [f"检索后端降级原因（异常原文）：{retriever.init_error}"]
+            if retriever.init_error
+            else []
+        ),
         f"检索层 recall@{top_k} = {retrieval['recall_at_k']:.1%}"
         f"（可判 {retrieval['scored']} 条，命中 {retrieval['hit']} 条）；"
         "答错时可据此区分「没检索到」与「检索到了没用好」。",

@@ -1242,6 +1242,21 @@ async function renderAgent() {
 // 这里要看三件事：检索找没找对（recall@k）、生成有没有忠于资料、资料里没有时会不会编。
 // 逐题把「它依据了哪几段」摆出来，是因为 RAG 的错误有两种完全不同的病因——
 // 没检索到（检索层的锅）和检索到了没用好（生成层的锅），混在一起看就没法归因。
+// 「检索后端」卡片：后端降级时必须显式标出来（kb-007 口径：降级不是沉默的），
+// 但**异常原文不上卡片**——`ModuleNotFoundError: No module named ...` 是排查信息，
+// 只在报告 JSON 的 notes 里。读者要看见的是「现在是字面匹配、不是语义结论」。
+function ragRetrieverStat(latest) {
+  // statHtml 是各视图函数里的局部定义，这里自包含渲染同样的结构，不依赖外部
+  const degraded = !!latest.retriever_degraded;
+  const label = latest.retriever_label || (degraded ? '字符相似度（降级）' : '—');
+  const hint = degraded
+    ? `<div class="k">${esc(latest.retriever_hint || '未安装向量库 sentence-transformers，本次检索为字面匹配、非语义结论')}</div>`
+    : '';
+  const badge = degraded ? ' <span class="badge" style="background:#b45309">降级</span>' : '';
+  const v = `<span style="font-size:13px">${esc(label)}</span>${badge}${hint}`;
+  return `<div class="stat"><div class="k">${esc('检索后端')}</div><div class="v">${v}</div></div>`;
+}
+
 function ragProvenanceLine(p) {
   if (!p || !Object.keys(p).length) return '';
   const bits = [];
@@ -1312,7 +1327,7 @@ async function renderRag() {
         ${statHtml('任务通过率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过${Number(latest.skipped || 0) ? ` · ${esc(latest.skipped)} 跳过` : ''}</div>`, rateColor(latest.pass_rate || 0))}
         ${statHtml(`检索层 recall@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
         ${statHtml('知识库', `${esc(latest.doc_count ?? '—')} 段<div class="k">top-${esc(latest.top_k ?? 2)} 拼进上下文</div>`)}
-        ${statHtml('检索后端', `<span style="font-size:13px">${esc(latest.retriever || '—')}</span>`)}
+        ${ragRetrieverStat(latest)}
       </div>
       ${ragProvenanceLine(latest.provenance)}
     </div>
@@ -2812,6 +2827,33 @@ def _rag_time(stamp: str) -> str:
         return stamp
 
 
+# 检索后端卡片的展示口径（kb-007 同款：降级必须显式标注，且不能把异常原文糊到页面上）。
+# 老结果 JSON 的 retriever 字段里带着 `ModuleNotFoundError: No module named ...` 原文，
+# 那是排查信息，**只在报告 JSON 的 notes 里**，卡片上要换成「人话 + 降级标记」。
+_RAG_DEGRADED_LABEL = "字符相似度（降级）"
+_RAG_DEGRADED_HINT = "未安装向量库 sentence-transformers，本次检索为字面匹配、非语义结论"
+
+
+def _rag_retriever_view(raw: str) -> dict:
+    """把 retriever 原始串翻成卡片能直接显示的三件套：label / degraded / hint。
+
+    判定不看异常文本，只看后端是不是字符后端——**降级这件事本身**才是读者要看见的，
+    「缺哪个包」是排查细节。
+    """
+    text = str(raw or "")
+    degraded = ("字符" in text) or ("降级" in text)
+    if degraded:
+        model = ""
+    else:
+        # 向量后端：`retriever(向量后端 <model>)` —— 模型名保留，便于知道用的哪个模型
+        model = text.split("向量后端", 1)[-1].strip(" )") if "向量后端" in text else ""
+    return {
+        "retriever_label": _RAG_DEGRADED_LABEL if degraded else (f"向量检索（{model}）" if model else "向量检索"),
+        "retriever_degraded": degraded,
+        "retriever_hint": _RAG_DEGRADED_HINT if degraded else "",
+    }
+
+
 def _is_rag_mock(models) -> bool:
     """这份 RAG 跑是不是自检跑（mock 模型）？
 
@@ -2851,7 +2893,9 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
         # 自检跑（mock 模型）是阴性对照，不是被测对象——看板据此决定它能不能进「最新成绩」
         "is_mock": _is_rag_mock(models),
         "top_k": data.get("top_k"),
+        # 原始串留给排查（`retriever(字符后端（降级）)` 这类），卡片上**只用清洗后的三个字段**
         "retriever": data.get("retriever") or "—",
+        **_rag_retriever_view(data.get("retriever") or ""),
         "total": first.get("total", 0),
         "passed": first.get("passed", 0),
         "failed": first.get("failed", 0),
