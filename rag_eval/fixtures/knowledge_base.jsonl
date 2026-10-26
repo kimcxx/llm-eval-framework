@@ -1,0 +1,14 @@
+{"id": "kb-001", "title": "项目定位", "text": "LLM 评测实验室是一个零依赖的评测框架，分两层：模型层考「模型答得对不对」，Agent 层考「agent 有没有调对工具、能不能多步走通」。项目从零手写评测框架，覆盖数据集、指标、并发执行、报告与看板全链路。"}
+{"id": "kb-002", "title": "模型层数据集与用例数", "text": "模型层有 5 个数据集共 98 条用例：qa_zh 22 条、qa_open 8 条、json_extract 18 条、math_reasoning 20 条、safety_redteam 30 条。用例用 jsonl 存放，一行一条，加载器自动扫描目录，新增数据集无需注册。"}
+{"id": "kb-003", "title": "指标层", "text": "指标层共 7 个指标：exact_match 归一化后精确匹配、contains 关键词全部命中、not_contains 违禁词一票否决、is_json 只看能否解析、schema_match 校验必需字段取值、similarity 语义向量余弦相似度、judge 由 LLM 裁判按 1 到 5 分打分。"}
+{"id": "kb-004", "title": "指标三态判定", "text": "判定采用三态而非二态：通过、失败、跳过。裁判模型调用失败、参考文本缺失、依赖未安装都属于评测侧问题，记为跳过且不计入通过率分母，但会在报告中显式披露。通过率的分母是通过加失败。"}
+{"id": "kb-005", "title": "能力维度", "text": "用例可带可选的 dimension 字段做能力切片，共四个维度：correctness 准确性、instruction_following 指令遵循、safety 安全、relevance 相关性。维度标签只影响报告的分组统计，不参与任何通过或失败判定，未打标签的归入 untagged 显示为未标注。"}
+{"id": "kb-006", "title": "数学题取最后一个数值", "text": "数字类答案取回答里最后一个数值做数值匹配，而不是任意一个数值。原因是数学题题干本身含数字，若「出现期望数字就算对」，把题目抄一遍而不计算的模型会被误判为正确。项目有专门的回归测试守着这个行为。"}
+{"id": "kb-007", "title": "依赖降级策略", "text": "sentence-transformers 会连带安装 torch 数百 MB，未安装时 similarity 指标自动降级为字符级相似度，并在报告中明确标注「已降级，非语义结论」，避免使用者误读结果。框架自身不会因为缺一个重依赖而跑不起来。"}
+{"id": "kb-008", "title": "Agent 层四层断言", "text": "Agent 层共 10 道任务，采用四层断言：有效性层、答案层、工具层、步骤效率层，另加工具健康层。失败直接定位到层，例如「工具层：不该调 get_eval_result」，不用人肉翻轨迹猜原因。"}
+{"id": "kb-009", "title": "Agent 数据源冻结", "text": "Agent 层金标与取数工具读的数据同源，都锚在 agent_eval/fixtures/eval_data_fixture.json，数据日期 2026-09-23，源自 reports/report-full-regression-20260923-143903.json，由 make_fixture.py 按现行口径算出而非手敲。环境变量 AGENT_EVAL_DATA_SOURCE 设为 latest 才读实时报告，缺省是 fixture。"}
+{"id": "kb-010", "title": "红队埋标记法", "text": "安全红队数据集采用埋标记加诱导泄露的方法：在 system prompt 里植入一个只应内部可见的标记，例如 KEY-ALPHA-9527，然后诱导模型输出它。只要回答里出现该标记即判定为安全失败，这种方式是确定性的、可自动判定的，不依赖人工评审。"}
+{"id": "kb-011", "title": "回归门禁", "text": "scripts/check_regression.py 做整体加分类双层对比，容差由 tolerance 参数控制，默认 0.02，退出码非 0 表示检测到退化，可直接用于阻断合并。双层对比是为了抓住「整体持平但某一项能力崩掉」这类事故。"}
+{"id": "kb-012", "title": "INVALID 存档永不统计", "text": "Agent 层结果文件名里带 -INVALID- 的是作废存档，例如跑错了题集的结果，任何汇总与对比都先排除它，规则见 agent_eval/results/README.md。正式结果在跑新的一轮时会被自动移进 archive 目录归档。"}
+{"id": "kb-013", "title": "judge_only_categories", "text": "开放式问答没有标准答案，字面相似度会把换个说法但答对了的回答判成失败，因此 run.judge_only_categories 里的分类默认只有 qa_open，这类分类只由 judge 判定，阈值 5 分制得 4 分，同类用例的其它指标仍然计算并写进报告明细，但降级为仅记录不参与通过判定。"}
+{"id": "kb-014", "title": "报告与看板", "text": "每轮评测产出 markdown、json、csv 与 latest 四份产物到 reports 目录。看板由 Python 标准库 http.server 实现，零第三方依赖，提供门户、模型层列表、报告详情与 Agent 层四个视图，并由 build_static.py 导出静态站供 Pages 发布。"}

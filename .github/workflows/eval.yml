@@ -32,8 +32,16 @@ jobs:
       - name: 单元测试 + 端到端冒烟
         run: pytest -q
 
+      # 只跑模型层 5 个数据集：rag_cases 是 RAG 层的用例，裸模型（不接检索管道）
+      # 做 RAG 题得到的成绩没有意义，还会污染模型层通过率，所以显式排除。
       - name: 生成基线报告
-        run: python scripts/run_eval.py --models mock-baseline --no-embedding --tag ci-baseline
+        run: |
+          python scripts/run_eval.py --models mock-baseline --no-embedding --tag ci-baseline \
+            --datasets qa_zh qa_open json_extract math_reasoning safety_redteam
+
+      # RAG 层自检：被测对象是 mini-RAG 管道（检索走字符后端，不加载向量模型），零额度。
+      - name: RAG 层冒烟（零成本）
+        run: python rag_eval/run_eval.py --models mock-baseline --no-embedding --tag ci-rag
 
       - name: 上传报告
         uses: actions/upload-artifact@v4

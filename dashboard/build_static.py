@@ -11,6 +11,7 @@
     <out>/api/report/<报告文件名>    各报告详情（同 /api/report/<name>）
     <out>/api/agent.json             Agent 评测结果（同 /api/agent.json，只读 agent_eval/）
     <out>/api/agent/report/<文件名>   Agent 评测的 HTML 报告（配上了才拷）
+    <out>/api/rag.json               RAG 评测结果（同 /api/rag.json，只读 rag_eval/）
 """
 import argparse
 import json
@@ -83,8 +84,20 @@ def build(reports_dir: Path, out_dir: Path) -> int:
             detail_src.read_text(encoding="utf-8"), encoding="utf-8"
         )
 
+    # RAG 评测板块（rag_eval/results/result-*.json；只读，不改）——与动态服务同源
+    rag_runs = app.load_rag_runs()
+    (out / "api" / "rag.json").write_text(
+        json.dumps(
+            {"latest": rag_runs[0] if rag_runs else None, "runs": rag_runs},
+            ensure_ascii=False,
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+
     agent_note = f" + Agent 评测 {len(agent_runs)} 次" if agent_runs else ""
-    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}{' + 用例详情' if detail_src.is_file() else ''}{agent_note}）")
+    rag_note = f" + RAG 评测 {len(rag_runs)} 次" if rag_runs else ""
+    print(f"静态站点已生成: {out}（{len(reports)} 份报告{'，含 CI 测试摘要' if tests_summary else ''}{' + 用例详情' if detail_src.is_file() else ''}{agent_note}{rag_note}）")
     return len(reports)
 
 
