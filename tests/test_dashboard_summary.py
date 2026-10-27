@@ -206,6 +206,57 @@ def test_empty_report_text_is_graceful():
     assert compute_conclusion({})['text'] == '通过率排名：无模型汇总数据；裁判模型：未启用；注意：本次未启用裁判模型（judge 指标未生效）'
 
 
+# ============================== 污染报告不给结论 ============================== #
+# 2026-10-27 那次：rag_cases 混进模型层全量，report 里有 rag_cases 分类，
+# 结论自动生成了「分类 rag_cases 明显偏低（deepseek-pro 仅 7.7%）」——它不是能力结论，
+# 是「这道本不该出现在这里的题没答对」。污染报告必须整体退出结论。
+
+def _polluted_report(**overrides):
+    """一份「有 rag_cases 分类且明显偏低」的模型层报告原型。"""
+    doc = {
+        'summary': [{'model': 'deepseek-pro', 'passed': 94, 'failed': 17, 'total': 111,
+                     'skipped': 0, 'pass_rate': 0.847}],
+        'categories': {
+            'deepseek-pro': [
+                {'category': 'rag_cases', 'total': 13, 'passed': 1, 'pass_rate': 0.077},
+                {'category': 'math_reasoning', 'total': 20, 'passed': 20, 'pass_rate': 1.0},
+            ]
+        },
+        'notes': ['裁判模型 glm-4.5-air（通过阈值 4/5）'],
+    }
+    doc.update(overrides)
+    return doc
+
+
+def test_polluted_report_produces_no_rank_and_no_anomaly_text():
+    c = compute_conclusion(_polluted_report(contaminated=True,
+                                            contamination_note='模型层混入了 RAG 用例'))
+    assert c['contaminated'] is True
+    assert c['rank'] == []
+    assert '污染' in c['text']
+    assert '通过率排名' not in c['text']
+    assert 'rag_cases' not in c['text']
+    assert '明显偏低' not in '；'.join(c['anomalies'])
+    assert any('模型层混入了 RAG 用例' in a for a in c['anomalies'])
+
+
+def test_same_report_without_mark_still_reports_anomaly():
+    """阴性对照：去掉污染标记，旧的异常句又会冒出来。
+
+    这既证明「污染标记」真的在拦它，也说明光删数据没用——结论是动态算出来的。
+    """
+    c = compute_conclusion(_polluted_report())
+    assert c.get('contaminated') is not True
+    assert any('rag_cases' in a for a in c['anomalies'])
+    assert '明显偏低' in '；'.join(c['anomalies'])
+
+
+def test_contaminated_style_wired_into_page():
+    """前端必须真的用上 contaminated 标记，光后端返回没落到页面上等于没做。"""
+    assert 'concl-warn' in PAGE
+    assert 'c.contaminated' in PAGE
+
+
 # ============================== 模板注入 ============================== #
 
 def test_metric_labels_injected_into_page():

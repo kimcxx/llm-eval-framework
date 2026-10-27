@@ -21,12 +21,48 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.config import DEFAULT_CONFIG_PATH, ConfigError, load_config  # noqa: E402
-from src.datasets import EvalCase, load_datasets  # noqa: E402
+from src.datasets import DatasetError, EvalCase, list_datasets, load_datasets  # noqa: E402
 from src.llm import build_client, build_clients  # noqa: E402
 from src.llm.base import BaseLLM  # noqa: E402
 from src.metrics import MetricFactory  # noqa: E402
 from src.report import write_reports  # noqa: E402
 from src.runner import EvalRunner  # noqa: E402
+
+
+# 不属于模型层的数据集：它们有自己的层与入口，模型层默认不跑。
+#
+# 由来：rag_cases 曾经放在 datasets/ 下，而这个入口会自动扫描 datasets/ 整个目录，
+# 于是手动跑一次不带 --datasets 的全量，13 条 RAG 题被当成模型层题跑了进去，
+# 混出一份 111 条的报告，连「本报告结论」都被它带偏。
+# 根治是把用例集挪回各层自己的目录（rag_eval/datasets/）；这里是第二道防线：
+# 就算哪天又有别层的数据集被放进来，默认扫描也不会把它当模型层的题跑。
+NON_MODEL_DATASETS = frozenset({"rag_cases"})
+_NON_MODEL_ENTRANCE = {"rag_cases": "rag_eval/run_eval.py"}
+
+
+def resolve_model_datasets(datasets_dir, requested=None):
+    """决定模型层这次跑哪些数据集：默认排除非模型层数据集，排除时给出显式告警。
+
+    ``requested`` 为空表示「扫目录下全部」（命令行默认行为），此时同样要排除——
+    污染事故就是发生在没人加 --datasets 的那次手动全量上。
+
+    返回 ``(names, dropped)``；指定的数据集全部不属于模型层时抛 DatasetError
+    （跑去跑空比报错更糟：报告照样生成，只是没人知道它跑了什么）。
+    """
+    if requested:
+        names = [str(n).strip() for n in requested if str(n).strip()]
+    else:
+        names = sorted(p.stem for p in list_datasets(datasets_dir))
+    kept = [n for n in names if n not in NON_MODEL_DATASETS]
+    dropped = [n for n in names if n in NON_MODEL_DATASETS]
+    if dropped:
+        where = "；".join(f"{n} 走 {_NON_MODEL_ENTRANCE.get(n, '各自入口')}" for n in dropped)
+        print(f"[数据集] 已排除非模型层数据集：{'、'.join(dropped)}（{where}）")
+    if not kept:
+        raise DatasetError(
+            f"没有可跑的模型层数据集：{'、'.join(names) or '目录下没有 .jsonl/.json'}"
+        )
+    return kept, dropped
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -150,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     categories = None
     if args.categories:
         categories = [c.strip() for c in args.categories.split(",") if c.strip()]
-    cases = load_datasets(config.paths.datasets_dir, args.datasets, categories=categories)
+    dataset_names, _dropped = resolve_model_datasets(config.paths.datasets_dir, args.datasets)
+    cases = load_datasets(config.paths.datasets_dir, dataset_names, categories=categories)
     cases = apply_limit(cases, args.limit)
 
     # --models 里点名的模型做一次归一化，便于与裁判模型按配置名比对

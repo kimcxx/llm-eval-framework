@@ -94,7 +94,7 @@ class TestRetriever:
 
     def test_retrieves_gold_doc_for_every_answerable_case(self, retriever: Retriever) -> None:
         """端到端命中的前提：标注了正确出处的题，检索必须能找回来。"""
-        cases = load_datasets(ROOT / "datasets", ["rag_cases"])
+        cases = load_datasets(ROOT / "rag_eval" / "datasets", ["rag_cases"])
         scored = [c for c in cases if gold_doc_ids(c)]
         assert scored, "用例集里应有标注正确出处的题"
         missed = []
@@ -207,7 +207,7 @@ class TestRAGEvalEndToEnd:
         """判分器一行没改：命中类靠 contains，诚实类靠 not_contains + judge。"""
         from src.config import RunSettings  # noqa: PLC0415
 
-        cases = [c for c in load_datasets(ROOT / "datasets", ["rag_cases"]) if c.id in ("rag-001", "rag-002")]
+        cases = [c for c in load_datasets(ROOT / "rag_eval" / "datasets", ["rag_cases"]) if c.id in ("rag-001", "rag-002")]
         rag = RAGLLM(_EchoKnowledgeLLM(name="deepseek-chat"), prefer_embedding=False)
         runner = EvalRunner(
             clients={rag.name: rag},  # type: ignore[dict-item]
@@ -224,7 +224,7 @@ class TestRAGEvalEndToEnd:
         """「不知道就说不知道」是考点：没编造就该过，哪怕裁判缺席。"""
         from src.config import RunSettings  # noqa: PLC0415
 
-        cases = [c for c in load_datasets(ROOT / "datasets", ["rag_cases"]) if c.id == "rag-011"]
+        cases = [c for c in load_datasets(ROOT / "rag_eval" / "datasets", ["rag_cases"]) if c.id == "rag-011"]
         rag = RAGLLM(_EchoKnowledgeLLM(name="deepseek-chat"), prefer_embedding=False)
         runner = EvalRunner(
             clients={rag.name: rag},  # type: ignore[dict-item]
@@ -241,7 +241,7 @@ class TestRAGEvalEndToEnd:
         """反过来的阴性对照：编造库名必须被 not_contains 抓到。"""
         from src.config import RunSettings  # noqa: PLC0415
 
-        cases = [c for c in load_datasets(ROOT / "datasets", ["rag_cases"]) if c.id == "rag-011"]
+        cases = [c for c in load_datasets(ROOT / "rag_eval" / "datasets", ["rag_cases"]) if c.id == "rag-011"]
         rag = RAGLLM(FakeLLM(name="deepseek-chat", default="用了 Milvus 做向量检索。"), prefer_embedding=False)
         runner = EvalRunner(
             clients={rag.name: rag},  # type: ignore[dict-item]
@@ -258,7 +258,7 @@ class TestRAGEvalEndToEnd:
         """端到端跑完，报告里的被测对象名必须带 rag- 前缀。"""
         from src.config import RunSettings  # noqa: PLC0415
 
-        cases = [c for c in load_datasets(ROOT / "datasets", ["rag_cases"]) if c.id == "rag-001"]
+        cases = [c for c in load_datasets(ROOT / "rag_eval" / "datasets", ["rag_cases"]) if c.id == "rag-001"]
         rag = RAGLLM(_EchoKnowledgeLLM(name="deepseek-chat"), prefer_embedding=False)
         runner = EvalRunner(
             clients={rag.name: rag},  # type: ignore[dict-item]
@@ -278,7 +278,7 @@ class TestRagCasesDataset:
 
     @pytest.fixture
     def cases(self) -> list[EvalCase]:
-        return load_datasets(ROOT / "datasets", ["rag_cases"])
+        return load_datasets(ROOT / "rag_eval" / "datasets", ["rag_cases"])
 
     def test_loads_with_legal_metrics_and_dimensions(self, cases: list[EvalCase]) -> None:
         assert 10 <= len(cases) <= 15, "用例集规模应在 10–15 条"
