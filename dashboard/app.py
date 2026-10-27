@@ -874,6 +874,25 @@ const rateColor = x => x >= 0.8 ? 'var(--ok)' : x >= 0.5 ? 'var(--warn)' : 'var(
 const rateInner = x => `<div style="display:flex;align-items:center;gap:8px"><span class="rate" style="color:${rateColor(x)}">${pct(x)}</span><span class="bar"><i style="width:${(x*100).toFixed(1)}%;background:${rateColor(x)}"></i></span></div>`;
 const rateCell = x => `<td>${rateInner(x)}</td>`;
 
+// 用例的「能力指标」：这条题测的是**什么能力**（四类之一）。
+// 与「判定方式」（怎么判：contains / judge …）是两个层次，必须分开两列——
+// 把判定器名摆在能力指标的位置上，等于告诉读者「这道考 contains」，那是把实现细节
+// 当成了测试意图（HELM / Open LLM Leaderboard / DeepEval 都按「能力名」组织指标）。
+// 判定方式列**保留**：它兼着「为什么判失败」的解释作用。
+const CASE_DIM_UNKNOWN = '未标注';
+const caseDimLabel = c => {
+  const key = caseDimOf(c);
+  return key === 'untagged' ? CASE_DIM_UNKNOWN : (DIM_LABELS[key] || String(key || CASE_DIM_UNKNOWN));
+};
+function caseDimCell(c) {
+  const untagged = caseDimOf(c) === 'untagged';
+  const label = caseDimLabel(c);
+  // 未标注用灰字而不是徽章：这是「还没打标签」的提示，不是一个已确定的能力结论
+  return untagged
+    ? `<td class="catname">${esc(label)}</td>`
+    : `<td><span class="badge">${esc(label)}</span></td>`;
+}
+
 // 用例的「判定方式」：这条结果是用哪些指标判出来的（中文标签，多指标全部列出）。
 // 安全集现在一半走安全裁判、一半走排除检查，列表里看不出区别就没法判断成绩怎么来的
 // ——判定方式透明化是评测工具的基本操守，所以单独成列。
@@ -2071,7 +2090,10 @@ function renderCasesTab(r, file) {
         → runner 调模型 → 按分类打分 → <code>report.json</code> 的 <code>cases[]</code> → 本页。
         每行 = <b>某个模型跑某条用例</b>的一条结果（同一 case_id 会有多行，
         一行一个模型）；展示<b>输入 / 模型输出</b>摘要，点行看完整 prompt、
-        期望输出、评分明细（抽屉里显示的就是这一行所属模型的那条结果）。
+        期望输出、评分明细（抽屉里显示的就是这一行所属模型的那条结果）。<br>
+        <b>能力指标</b>（测什么能力：准确性 / 指令遵循 / 安全 / 相关性）与<b>判定方式</b>
+        （怎么判：contains / judge …）是两回事，分两列显示——把判定器名摆在能力指标的位置上，
+        等于告诉读者「这道考 contains」，那是把实现细节当成了测试意图。
       </div>
       <div class="toolbar">
         <select id="fltStatus">
@@ -2093,7 +2115,7 @@ function renderCasesTab(r, file) {
       </div>
       <div class="card" style="padding:0;overflow:auto">
         <table>
-          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:120px">判定</th><th style="width:96px">通过次数</th><th style="width:80px">延迟</th></tr>
+          <tr><th style="width:56px">状态</th><th style="width:110px">case_id</th><th style="width:110px">模型</th><th>输入（prompt）</th><th>模型输出（response）</th><th style="width:90px">分类</th><th style="width:104px">能力指标</th><th style="width:120px">判定方式</th><th style="width:96px">通过次数</th><th style="width:80px">延迟</th></tr>
           ${filtered.map(c => {
             const st = statusOf(c);
             const lat = c.latency_ms != null ? c.latency_ms.toFixed(2) + ' ms' : '—';
@@ -2106,6 +2128,7 @@ function renderCasesTab(r, file) {
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.prompt, 80))}</td>
               <td class="catname" style="white-space:normal;max-width:280px">${esc(prev(c.response, 80))}${st==='fail' && failMetric ? `<div class="err" style="font-size:12px;margin-top:3px">${esc(prev(failMetric.detail || failMetric.name, 60))}</div>` : ''}</td>
               <td><span class="badge">${esc(c.category || '（无）')}</span></td>
+              ${caseDimCell(c)}
               ${caseMethodCell(c)}
               ${repeatCell(c)}
               <td>${lat}</td>
@@ -2239,7 +2262,7 @@ function openDrawer(c) {
   $drawerBody.innerHTML = `
     <div class="info-row" style="margin-bottom:14px">
       <span>分类：<b>${esc(c.category || '（无）')}</b></span>
-      <span>维度：<b>${esc(dimLabel(c.dimension))}</b></span>
+      <span>能力指标：<b>${esc(caseDimLabel(c))}</b></span>
       <span>数据集：<b>${esc(c.dataset || '（无）')}</b></span>
       <span>模型：<b>${esc(c.model || '（无）')}</b></span>
     </div>
@@ -2262,10 +2285,12 @@ function openDrawer(c) {
       <div class="scroll-box mono err">${esc(c.error)}</div>
     </div>` : ''}
     <div class="drawer-section">
-      <h3>指标 (${(c.metrics||[]).length})</h3>
+      <h3>判定方式 (${(c.metrics||[]).length})</h3>
+      <div class="hint" style="margin:-2px 0 6px">能力指标 = 这条题测什么能力（见上方「能力指标」）；
+        这张表是<b>怎么判</b>——每个判定器的得分与判词，「为什么会判失败」在这里查。</div>
       ${(c.metrics||[]).length ? `
         <table>
-          <tr><th>指标</th><th>score</th><th>通过</th><th>详情</th></tr>
+          <tr><th>判定方式</th><th>score</th><th>通过</th><th>详情</th></tr>
           ${c.metrics.map(m => `
             <tr>
               <td><span class="badge" title="${esc(m.name)}">${esc(metricLabel(m.name))}</span></td>
