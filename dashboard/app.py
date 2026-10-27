@@ -1275,6 +1275,47 @@ function ragAnswerCell(c) {
   return `<td class="wrapcell catname" title="${esc(full)}">${esc(shown)}</td>`;
 }
 
+// 考点（想测什么能力）——展示用的中文名，取值白名单与 rag_eval 侧一致
+const FOCUS_LABELS = {end_to_end: '端到端命中', faithfulness: '忠实度', honesty: '无答案诚实'};
+const focusTag = f => FOCUS_LABELS[f] || '<span class="catname">—</span>';
+
+// 顶部「指标汇总」四项：这里只摆**结果数字**。
+// 考点（想测什么）、判定方式（怎么判）、指标（结果）是三个层次，不许再让判定器名
+// 占着「指标」的位置——那是把它们混为一谈的源头。
+function ragMetricStat(m) {
+  if (!m) return '';
+  if (m.skipped) {
+    // 跳过必须写得跟通过率一样醒目：给 0 或 100% 都会被误读成「这家伙跑出来了」
+    // 跳过必须写得跟通过率一样醒目：给 0 或 100% 都会被误读成「这家伙跑出来了」；
+    // 文案与 rag_eval 侧的 JUDGE_MISSING_TEXT 一致（数据里没给 reason 时用它兜底）
+    return `<div class="stat"><div class="k">${esc(m.label || '')}</div>
+      <div class="v" style="color:#b45309;font-size:15px">${esc(m.reason || '跳过（未配置裁判模型）')}</div>
+      <div class="k">judge 缺席，不计入通过率</div></div>`;
+  }
+  const hasValue = Number.isFinite(Number(m.value));
+  return `<div class="stat"><div class="k">${esc(m.label || '')}</div>
+    <div class="v"${hasValue ? ` style="color:${rateColor(m.value)}"` : ''}>${hasValue ? pct(m.value) : '—'}</div>
+    <div class="k">${esc(m.passed ?? 0)} / ${esc(m.scored ?? 0)}</div></div>`;
+}
+
+function ragMetricsSummaryCard(ms) {
+  const keys = ['recall_at_k', 'end_to_end', 'honesty', 'faithfulness'];
+  const has = keys.some(k => ms && ms[k]);
+  if (!has) {
+    return `<div class="card">
+      <div style="font-weight:600;margin-bottom:4px">指标汇总</div>
+      <div class="hint">本次结果文件没有指标汇总（旧格式）——重跑一次 RAG 评测即可生成。没有数就写「没有」，不给假数字。</div>
+    </div>`;
+  }
+  return `
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:4px">指标汇总（结果数字）</div>
+      <div class="hint">「考点 = 想测什么能力」「判定方式 = 怎么判」「指标 = 结果数字」是三个层次：
+        这一栏只看数字，三件事在下方逐题明细里分三列列出。跳过不计入分母，也会显式写出。</div>
+      <div class="grid" style="margin-top:6px">${keys.map(k => ragMetricStat(ms[k])).join('')}</div>
+    </div>`;
+}
+
 function ragCaseRow(c) {
   const statusBadge = c.status === '通过'
     ? '<span class="badge pass">通过</span>'
@@ -1283,10 +1324,14 @@ function ragCaseRow(c) {
   const hit = (c.gold && c.gold.length)
     ? (c.gold_hit ? '<span class="badge pass">命中</span>' : '<span class="badge fail">未命中</span>')
     : '<span class="catname">—</span>';
-  const metrics = (c.metrics || []).map(m => {
+  // 「判定方式」= 怎么判（技术手段）：只列判定器名
+  const judges = (c.metrics || []).map(m =>
+    `<span class="badge" title="${esc(m.detail || '')}">${esc(m.name)}</span>`).join(' ') || '<span class="catname">—</span>';
+  // 「结果」= 状态 + 各判定器得分（度量），与「怎么判」分开
+  const result = (c.metrics || []).map(m => {
     const cls = m.passed === true ? 'pass' : (m.passed === false ? 'fail' : '');
-    return `<span class="badge ${cls}" title="${esc(m.detail || '')}">${esc(m.name)}${m.passed === true ? ' ✓' : (m.passed === false ? ' ✗' : ' —')}</span>`;
-  }).join(' ');
+    return `<span class="badge ${cls}" title="${esc(m.detail || '')}">${esc(m.name)} ${esc(m.score)}${m.passed === true ? ' ✓' : (m.passed === false ? ' ✗' : ' —')}</span>`;
+  }).join(' ') || '<span class="catname">—</span>';
   return `
     <tr>
       <td class="mono">${esc(c.id)}</td>
@@ -1294,7 +1339,9 @@ function ragCaseRow(c) {
       <td class="catname">${esc((c.retrieved || []).join(', ') || '（空）')}</td>
       <td>${gold}</td>
       <td>${hit}</td>
-      <td class="wrapcell">${statusBadge}<div style="margin-top:4px">${metrics}</div></td>
+      <td>${focusTag(c.focus)}</td>
+      <td class="wrapcell">${judges}</td>
+      <td class="wrapcell">${statusBadge}<div style="margin-top:4px">${result}</div></td>
       ${ragAnswerCell(c)}
     </tr>`;
 }
@@ -1331,13 +1378,16 @@ async function renderRag() {
       </div>
       ${ragProvenanceLine(latest.provenance)}
     </div>
+    ${ragMetricsSummaryCard(latest.metrics_summary)}
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">逐题明细（${cases.length} 条）</div>
       <div class="hint">「检索到」是这次真正拼进上下文的资料编号，「正确出处」是题目标注的答案所在文档——
-        两者对不上就是检索层的锅；对得上却答错，那是生成层没用好资料。</div>
+        两者对不上就是检索层的锅；对得上却答错，那是生成层没用好资料。<br>
+        <b>考点</b>（想测什么能力）与<b>判定方式</b>（怎么判：contains / not_contains / judge）、
+        <b>结果</b>（状态与得分）是三个层次，分列显示——判定器名不再占「指标」的位置。</div>
       <table>
-        <tr><th>用例</th><th>问题</th><th>检索到</th><th>正确出处</th><th>命中</th><th>判定</th><th>回答（截断）</th></tr>
-        ${cases.map(ragCaseRow).join('') || `<tr><td colspan="7" class="empty">暂无明细</td></tr>`}
+        <tr><th>用例</th><th>问题</th><th>检索到</th><th>正确出处</th><th>命中</th><th>考点</th><th>判定方式</th><th>结果</th><th>回答（截断）</th></tr>
+        ${cases.map(ragCaseRow).join('') || `<tr><td colspan="9" class="empty">暂无明细</td></tr>`}
       </table>
     </div>
     </div>` : `
@@ -2906,6 +2956,9 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
         "recall_k": retrieval.get("k"),
         "recall_scored": retrieval.get("scored", 0),
         "recall_hit": retrieval.get("hit", 0),
+        # 顶部「指标汇总」四项（由 rag_eval 算好写进结果 JSON；老结果没有这个字段时给空 dict，
+        # 页面会显示「需重跑」而不是假数字——没有数就是没有数，不猜）
+        "metrics_summary": data.get("metrics_summary") or {},
         "doc_count": kb.get("doc_count"),
         "kb_path": kb.get("path") or "",
         "provenance": kb.get("provenance") or {},

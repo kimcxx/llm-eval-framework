@@ -44,6 +44,80 @@ from rag_eval.retriever import Retriever  # noqa: E402
 DATASET_NAME = "rag_cases"
 RESULTS_DIR = ROOT / "rag_eval" / "results"
 ARCHIVE_DIR = RESULTS_DIR / "archive"
+
+# 考点（想测什么能力）→ 判定方式（怎么判）→ 指标（结果数字）是三个层次，别混为一谈：
+# 逐题明细把它们分成三列，报告顶部只展示指标（数字）。focus 写在用例集里，
+# 由加载器塞进 EvalCase.meta（src/ 的 schema 不动，判据口径一个字不改）。
+FOCUS_LABELS = {
+    "end_to_end": "端到端命中",
+    "faithfulness": "忠实度",
+    "honesty": "无答案诚实",
+}
+FOCUS_WHITELIST = tuple(FOCUS_LABELS)
+# judge 缺席时忠实度必须显式显示「跳过」，不许留空、不许显示 0/100%
+# （CD 报告那次的教训：跳过要写得跟通过率一样醒目）
+JUDGE_MISSING_TEXT = "跳过（未配置裁判模型）"
+
+
+def case_focus(case: Any) -> str:
+    """取用例的考点取值；老数据没写 focus 时给空串（页面显示「—」）。"""
+    return str((getattr(case, "meta", None) or {}).get("focus") or "").strip()
+
+
+def rag_focus_summary(rows: list[dict[str, Any]], retrieval: dict[str, Any]) -> dict[str, Any]:
+    """四项指标汇总（写在结果 JSON 的 metrics_summary 里，供看板直接渲染）。
+
+    * 检索层 Recall@k：沿用 retrieval 的既有口径（命中 ÷ 可判）；
+    * 端到端准确率：通过数 ÷ 应判数（应判 = 通过 + 失败，**跳过不计入分母**）；
+    * 拒答率：考点为 honesty 那几条的通过比例；
+    * 忠实度：考点为 faithfulness 那几条由 judge 裁的通过比例；
+      **judge 缺席时整项标记 skipped**，reason 用 JUDGE_MISSING_TEXT——不给数字。
+    """
+
+    def rate(sub: list[dict[str, Any]]) -> dict[str, Any]:
+        scored = [r for r in sub if r.get("status") in ("通过", "失败")]
+        passed = [r for r in scored if r.get("status") == "通过"]
+        return {
+            "value": (len(passed) / len(scored)) if scored else None,
+            "passed": len(passed),
+            "scored": len(scored),
+        }
+
+    honesty_rows = [r for r in rows if r.get("focus") == "honesty"]
+    faith_rows = [r for r in rows if r.get("focus") == "faithfulness"]
+    # judge 有没有真的判过：缺席时 judge 根本不会出现在 result.metrics 里（被跳过不计失败）
+    judge_seen = any(m.get("name") == "judge" for r in faith_rows for m in (r.get("metrics") or []))
+    faith = rate(faith_rows)
+    return {
+        "recall_at_k": {
+            "label": f"检索层 Recall@{retrieval.get('k', 2)}",
+            "value": retrieval.get("recall_at_k"),
+            "passed": retrieval.get("hit", 0),
+            "scored": retrieval.get("scored", 0),
+            "skipped": False,
+            "reason": "",
+        },
+        "end_to_end": {
+            "label": "端到端准确率",
+            **rate(rows),
+            "skipped": False,
+            "reason": "",
+        },
+        "honesty": {
+            "label": "拒答率",
+            **rate(honesty_rows),
+            "skipped": False,
+            "reason": "",
+        },
+        "faithfulness": {
+            "label": "忠实度",
+            "value": faith["value"] if judge_seen else None,
+            "passed": faith["passed"] if judge_seen else 0,
+            "scored": faith["scored"] if judge_seen else 0,
+            "skipped": not judge_seen,
+            "reason": "" if judge_seen else JUDGE_MISSING_TEXT,
+        },
+    }
 DEFAULT_TAG = "rag"
 
 
@@ -103,6 +177,7 @@ def archive_previous(current: Path) -> None:
 def case_rows(report: Any, cases: list[Any], rag_clients: dict[str, RAGLLM]) -> list[dict[str, Any]]:
     """把每条用例的答案、依据（检索到的文档）、命中情况与判定拼成可核对的明细。"""
     gold_by_id = {c.id: gold_doc_ids(c) for c in cases}
+    focus_by_id = {c.id: case_focus(c) for c in cases}
     rows: list[dict[str, Any]] = []
     for result in report.cases:
         client = rag_clients.get(result.model)
@@ -114,6 +189,8 @@ def case_rows(report: Any, cases: list[Any], rag_clients: dict[str, RAGLLM]) -> 
             {
                 "id": result.case_id,
                 "dimension": result.dimension,
+                # 考点（想测什么能力）——与「判定方式」「结果」分开显示，三个层次不许混
+                "focus": focus_by_id.get(result.case_id, ""),
                 "prompt": result.prompt,
                 "answer": result.response_text,
                 "status": status,
@@ -261,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     report_file = Path(written["json"])
 
     result_file = RESULTS_DIR / f"result-{stamp}.json"
+    detail_rows = case_rows(report, cases, rag_clients)
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "models": list(rag_clients.keys()),
@@ -284,7 +362,9 @@ def main(argv: list[str] | None = None) -> int:
             for s in report.overall()
         ],
         "retrieval": retrieval,
-        "cases": case_rows(report, cases, rag_clients),
+        "cases": detail_rows,
+        # 顶部「指标汇总」四项（数字），逐题明细里则是考点 / 判定方式 / 结果三列
+        "metrics_summary": rag_focus_summary(detail_rows, retrieval),
         "notes": report.notes,
     }
     result_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
