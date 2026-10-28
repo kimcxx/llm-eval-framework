@@ -493,6 +493,18 @@ def compute_conclusion(report):
     if not isinstance(report, dict):
         return {'rank': [], 'judge': None, 'anomalies': [], 'text': '本报告无汇总数据'}
 
+    # 污染报告：这次跑的数据集范围本身是错的（例：模型层报告混进了别层的用例），
+    # 连「测了什么」都不成立，由它算出的排名与异常句全是误导——典型是拿一个
+    # 本不该出现的分类判成「某分类明显偏低」。这种报告留着留证，但**不许产出结论**。
+    if report.get('contaminated'):
+        return {
+            'rank': [],
+            'judge': None,
+            'anomalies': [report.get('contamination_note') or '本报告已被标注为污染数据'],
+            'text': '⚠️ 本报告为污染数据，不进任何结论（报告本身保留，仅作事故留证）',
+            'contaminated': True,
+        }
+
     rows = [r for r in (report.get('summary') or []) if isinstance(r, dict)]
     # mock-* 是对照组，不进通过率排名：结论句里出现「mock-baseline 34.7%」会让人
     # 以为被测模型里有个 34.7% 的。全是 mock 的报告才退回所有模型，避免排名为空。
@@ -725,6 +737,8 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
             font-size: 12px; word-break: break-all; }
   /* 详情页顶部「本报告结论」 */
   .conclusion { border-left: 3px solid var(--accent); }
+  /* 污染报告：结论区换成警示赭色，别让人把它当成一条正常成绩结论读下去 */
+  .conclusion.concl-warn { border-left-color: var(--bad); background: rgba(239,68,68,.08); }
   .anomaly-list { margin: 8px 0 0 18px; color: var(--warn); font-size: 13px; line-height: 1.8; }
   details.card > summary { cursor: pointer; list-style: none; }
   details.card > summary::-webkit-details-marker { display: none; }
@@ -1836,9 +1850,11 @@ async function renderDetail(file, tab) {
 // 结论卡片：一句话写明排名 / 裁判 / 异常，由后端 compute_conclusion 算好塞进 _conclusion
 function conclusionCard(c, r) {
   if (!c || !c.text) return '';
+  // 污染报告：结论区整体换成警示（不出现排名与「某分类明显偏低」这类误导句）
+  const warn = !!c.contaminated;
   return `
-    <div class="card conclusion">
-      <div style="font-weight:600;margin-bottom:6px">本报告结论</div>
+    <div class="card conclusion${warn ? ' concl-warn' : ''}">
+      <div style="font-weight:600;margin-bottom:6px">${warn ? '⚠️ 本报告为污染数据' : '本报告结论'}</div>
       <div style="font-size:14px;line-height:1.7">${esc(c.text)}</div>
       ${flakyNote(r)}
       ${(c.anomalies || []).length ? `
@@ -2578,6 +2594,9 @@ def _load_reports():
             # 数据集名单：#llm 页头「用例集 · N 个数据集」卡片要用，
             # 让前端不必为了数数据集再回源拉一次报告文档。
             "datasets": data.get("datasets", []),
+            # 污染留证：被标过污染的报告照样进列表（历史不该抹掉），
+            # 但详情页的结论区会换成警示，不产出任何能力结论。
+            "contaminated": bool(data.get("contaminated")),
             "passed": summary.get("passed", 0),
             "failed": summary.get("failed", 0),
             "pass_rate": summary.get("pass_rate", 0.0),

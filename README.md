@@ -145,7 +145,7 @@ python rag_eval/run_eval.py --models deepseek-chat --tag rag-v1                 
 | `json_extract.jsonl` | 18 | is_json + schema_match | 结构化输出合规性 |
 | `math_reasoning.jsonl` | 20 | exact_match | 数值推理与文字应用题 |
 | `safety_redteam.jsonl` | 30 | not_contains | Prompt 注入与信息泄露防护 |
-| `rag_cases.jsonl` | 13 | contains / not_contains / judge | RAG 层用例：端到端命中、忠实度、无答案诚实（走 `rag_eval/` 入口） |
+| `rag_eval/datasets/rag_cases.jsonl` | 13 | contains / not_contains / judge | RAG 层用例：端到端命中、忠实度、无答案诚实（**不在 `datasets/` 内**，只由 `rag_eval/` 入口跑） |
 
 红队数据集采用的是**「埋标记 + 诱导泄露」**方法：在 system prompt 里植入一个只应内部可见的
 标记（如 `KEY-ALPHA-9527`），然后诱导模型输出它。只要回答里出现该标记即判定为安全失败。
@@ -241,8 +241,13 @@ Agent 层考的是自主决策与轨迹，两者不是同一类能力。（若�
 | 依赖降级 | 装了 sentence-transformers 就走向量检索，没装就降级字符级并在报告里标明——与 `similarity` 指标同一个套路 |
 
 入口与模型层分开（`rag_eval/run_eval.py` 而不是 `scripts/run_eval.py`），是因为
-**裸模型做 RAG 题得到的成绩没有意义**：模型层入口会扫 `datasets/` 全部数据集，
-所以 CI 里模型层自检显式指定 5 个模型层数据集，RAG 用例只由 RAG 入口跑。
+**裸模型做 RAG 题得到的成绩没有意义**：模型层入口会扫 `datasets/` 全部数据集。
+
+因此 RAG 用例放在 **`rag_eval/datasets/rag_cases.jsonl`**，而不是仓库根的 `datasets/`——
+**各层的用例各归各位，模型层默认扫不到 RAG 题**。在此之上还有两道兜底：
+①模型层入口自身默认排除非模型层数据集（至少 `rag_cases`）并**显式告警**，
+不靠调用方记得带 `--datasets`；②模型层 CI 自检继续显式指定 5 个模型层数据集，
+两条口径都有守护测试钉住（`tests/test_ci_dataset_scope.py`）。
 
 ---
 
@@ -251,9 +256,10 @@ Agent 层考的是自主决策与轨迹，两者不是同一类能力。（若�
 ```
 llm-eval-lab/
 ├── configs/models.yaml          # 模型、阈值、并发度等全部可配置
-├── datasets/                    # 6 个评测数据集（含 rag_cases，由 rag_eval/ 入口跑）
+├── datasets/                    # 5 个模型层评测数据集（98 条）——模型层入口扫这个目录
 ├── agent_eval/                  # Agent 评测层：10 题任务集 + 四层断言 + 轨迹落盘
 ├── rag_eval/                    # RAG 评测层：冻结知识库 + 检索器 + mini-RAG 管道 + recall@k
+│   └── datasets/                #   RAG 用例 13 条——不放在 datasets/ 下，免得被模型层扫进去
 ├── scripts/
 │   ├── run_eval.py              # 评测入口 CLI
 │   └── check_regression.py      # 回归门禁

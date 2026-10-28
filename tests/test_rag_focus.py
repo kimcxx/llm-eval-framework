@@ -9,7 +9,7 @@
         * 结果 JSON 新增 ``metrics_summary``（四项指标数字）；
         * #rag 页顶部摆四项汇总，逐题明细拆成「考点 / 判定方式 / 结果」三列。
 
-红线：``datasets/rag_cases.jsonl`` 的判据字段一字不改，只新增 focus；
+红线：``rag_eval/datasets/rag_cases.jsonl`` 的判据字段一字不改，只新增 focus；
 ``src/`` 的判定逻辑不动——**这是展示层改动，成绩一分不能变**。
 """
 
@@ -25,7 +25,7 @@ from rag_eval.run_eval import (
     rag_focus_summary,
 )
 
-DATASET = Path(__file__).resolve().parent.parent / "datasets" / "rag_cases.jsonl"
+DATASET = Path(__file__).resolve().parent.parent / "rag_eval" / "datasets" / "rag_cases.jsonl"
 FOCUS_WHITELIST = tuple(FOCUS_LABELS)
 
 

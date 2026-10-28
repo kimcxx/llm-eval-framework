@@ -42,6 +42,11 @@ from rag_eval.retrieval import evaluate_retrieval, format_retrieval, gold_doc_id
 from rag_eval.retriever import Retriever  # noqa: E402
 
 DATASET_NAME = "rag_cases"
+# RAG 用例集放在 rag_eval/datasets/ 而不是仓库根的 datasets/：
+# 模型层入口 scripts/run_eval.py 会扫描 datasets/ 整个目录，放那里会被扫进
+# 模型层全量回归（rag_cases 曾被当成模型层题跑，混出一份 111 条的脏报告）。
+# 各层的用例各归各位，模型层扫 datasets/ 时自然扫不到 RAG 题。
+RAG_DATASETS_DIR = ROOT / "rag_eval" / "datasets"
 RESULTS_DIR = ROOT / "rag_eval" / "results"
 ARCHIVE_DIR = RESULTS_DIR / "archive"
 
@@ -215,11 +220,11 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(args.config)
     top_k = max(1, int(args.top_k))
 
-    cases = load_datasets(Path(config.paths.datasets_dir), [DATASET_NAME])
+    cases = load_datasets(RAG_DATASETS_DIR, [DATASET_NAME])
     if args.limit and args.limit > 0:
         cases = cases[: args.limit]
     if not cases:
-        print(f"没有加载到 {DATASET_NAME} 用例，请检查 datasets/{DATASET_NAME}.jsonl")
+        print(f"没有加载到 {DATASET_NAME} 用例，请检查 rag_eval/datasets/{DATASET_NAME}.jsonl")
         return 1
 
     docs = load_knowledge_base()
