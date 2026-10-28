@@ -1149,7 +1149,7 @@ async function computeBannerData(reports) {
     }
   }
 
-  return { time: curr.time, models, regressed, fixed, weakest, hasBase: !!base };
+  return { time: curr.time, time_display: curr.time_display, models, regressed, fixed, weakest, hasBase: !!base };
 }
 
 function renderBanner(data) {
@@ -1171,7 +1171,7 @@ function renderBanner(data) {
     : '<span class="delta-na">—</span>';
   return `
     <div class="banner">
-      最新真实评测 · ${esc(data.time || '')}：${modelsHtml}
+      最新真实评测 · ${esc(data.time_display || '')}：${modelsHtml}
       ；回归 <b style="color:var(--bad)">${data.regressed}</b> 条 / 修复 <b style="color:var(--ok)">${data.fixed}</b> 条
       ；最弱维度：${weakestHtml}
     </div>`;
@@ -1233,7 +1233,7 @@ async function renderAgent() {
       所以分开看，不并在一张表里。</div>
     ${latest ? `
     <div class="card">
-      <div class="hint">最新一次：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+      <div class="hint">最新一次：${esc(latest.time_display)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
         · 大脑 <b>${esc(latest.brain || 'deepseek-chat')}</b>
         · ${esc(latest.file)}${latest.report ? ` · ${agentReportLink(latest)}` : ''}</div>
       <div class="grid" style="margin-bottom:4px">
@@ -1251,7 +1251,7 @@ async function renderAgent() {
         <tr><th>时间</th><th>大脑</th><th>通过率</th><th>repeat</th><th>状态</th><th>报告</th></tr>
         ${runs.map(r => `
           <tr>
-            <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
+            <td class="catname">${esc(r.time_display)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
             <td><span class="badge">${esc(r.brain || 'deepseek-chat')}</span></td>
             ${rateCell(r.pass_rate || 0)}
             <td><span class="badge">${esc(r.repeat)} 遍</span></td>
@@ -1399,10 +1399,10 @@ async function renderRag() {
       不做「要不要检索」的决策、不产生多步轨迹——所以它是独立的一层，不是 Agent 层的子集。</div>
     ${latest ? `
     <div class="card">
-      <div class="hint">最新一次（真实模型）：${esc(latest.time)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
+      <div class="hint">最新一次（真实模型）：${esc(latest.time_display)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
         · 被测对象 <b>${esc(latest.model || '—')}</b>
         · ${esc(latest.file)}${latest.report_file ? ` · <span class="catname">${esc(latest.report_file)}</span>` : ''}
-        ${selfcheckIsNewer ? `<br>另有 ${esc(latestAny.time)} 的自检跑（<code>${esc(latestAny.model || 'mock')}</code>，阴性对照，不进成绩），见下方历史结果。` : ''}</div>
+        ${selfcheckIsNewer ? `<br>另有 ${esc(latestAny.time_display)} 的自检跑（<code>${esc(latestAny.model || 'mock')}</code>，阴性对照，不进成绩），见下方历史结果。` : ''}</div>
       <div class="grid" style="margin-bottom:4px">
         ${statHtml('任务通过率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过${Number(latest.skipped || 0) ? ` · ${esc(latest.skipped)} 跳过` : ''}</div>`, rateColor(latest.pass_rate || 0))}
         ${statHtml(`检索层 recall@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
@@ -1425,7 +1425,7 @@ async function renderRag() {
     </div>
     </div>` : `
     <div class="card"><div class="sub" style="margin:0">${onlySelfcheck
-      ? `目前只有自检跑（<code>${esc(latestAny.model || 'mock')}</code>，${esc(latestAny.time)}）——它是管道阴性对照，不算成绩。跑一次真实模型：<code>python rag_eval/run_eval.py --models deepseek-chat</code>。`
+      ? `目前只有自检跑（<code>${esc(latestAny.model || 'mock')}</code>，${esc(latestAny.time_display)}）——它是管道阴性对照，不算成绩。跑一次真实模型：<code>python rag_eval/run_eval.py --models deepseek-chat</code>。`
       : `暂无结果。先跑 <code>python rag_eval/run_eval.py</code>（零成本冒烟：<code>--models mock-baseline --no-embedding</code>）生成 <code>rag_eval/results/result-*.json</code>。`}</div></div>`}
     ${runs.length ? `
     <div class="card">
@@ -1435,7 +1435,7 @@ async function renderRag() {
         <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>recall@k</th><th>状态</th></tr>
         ${runs.map(r => `
           <tr>
-            <td class="catname">${esc(r.time)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
+            <td class="catname">${esc(r.time_display)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
             <td><span class="badge">${esc(r.model || '—')}</span>${r.is_mock ? ' <span class="catname">自检 · 阴性对照</span>' : ''}</td>
             ${rateCell(r.pass_rate || 0)}
             <td class="catname">${r.recall_at_k === undefined || r.recall_at_k === null ? '—' : pct(r.recall_at_k)}</td>
@@ -1527,7 +1527,7 @@ function agentTaskList(latest, ds) {
     ? `<div class="hint" style="padding:0 12px 6px">数据源：<b>agent 评测专用快照</b>（源自 ${esc(ds.data_date || '—')} 全量回归 · <code>${esc(ds.fixture || '')}</code>）· <a href="#${encodeURIComponent(srcFile)}">看该报告 →</a></div>`
     : '';
   return `<div class="card">
-      <div style="font-weight:600;margin-bottom:4px">逐题明细 · 最新一次（${esc(latest.time || '—')} · 大脑 ${esc(latest.brain || 'deepseek-chat')}）</div>
+      <div style="font-weight:600;margin-bottom:4px">逐题明细 · 最新一次（${esc(latest.time_display || '—')} · 大脑 ${esc(latest.brain || 'deepseek-chat')}）</div>
       ${dsLine}
       <div class="hint" style="padding:0 12px 6px">被测对象是 <b>agent 系统本身</b>，大脑只是可替换组件（换脑跑的成绩在下方历史表里分行看）。
         考点取自 <code>agent_eval/tasks.json</code> 的 design_note，原样搬运不另编；四层断言逐项亮灯（悬停看判定依据）；点开一行看失败原因、判据修订留痕与逐步轨迹。</div>
@@ -1540,10 +1540,11 @@ const modelsOf = r => (isMultiModel(r) ? r.model_rows : [{ model: r.model }]).fi
 // Agent 结果的历史里有一段没有 brain 字段（那时只有一个大脑），按这个缺省补齐，
 // 与后端 _agent_entry 的口径一致。
 const DEFAULT_BRAIN = 'deepseek-chat';
-// 时间戳 20260923-143903 → 2026-09-23 14:39（门户上要给访问者看日期）
-const fmtTime = t => (t && String(t).length >= 13)
-  ? `${String(t).slice(0,4)}-${String(t).slice(4,6)}-${String(t).slice(6,8)} ${String(t).slice(9,11)}:${String(t).slice(11,13)}`
-  : (t || '—');
+// 时间戳**只由后端解析一次**（normalize_display_time → 'YYYY-MM-DD HH:MM'），
+// 前端原样显示、**不做二次切割**。之前这里靠硬编码下标切字符串（假设 15 位
+// 紧凑串），遇到带 tag 的文件名（report-clean-20261027-20261027-214243）就切出
+// `20261027-202610`，对 RAG 那种已经格式化好的串又切成乱码——晓旭 2026-10-28 发现。
+const fmtTime = t => (t && String(t) !== '?') ? String(t) : '—';
 
 // 门户成绩取哪份报告：**从最新往回找第一份含真实模型（非 mock-*）的报告**。
 // CD 冒烟报告只有 mock-baseline（管道自检的假模型），拿它当成绩会把「mock 基线」
@@ -1592,7 +1593,7 @@ async function renderPortal(reports) {
   const llmScore = scoring ? `
       ${sec('最新成绩', realRows.map(x =>
         `<span class="pchip">${esc(x.model)} <b class="rate" style="color:${rateColor(listRate(scoring, x))}">${pct(listRate(scoring, x))}</b></span>`
-      ).join(' ') + `<span class="pwhen">${esc(fmtTime(scoring.time))} · 共 ${reports.length} 份报告</span>`)}`
+      ).join(' ') + `<span class="pwhen">${esc(fmtTime(scoring.time_display))} · 共 ${reports.length} 份报告</span>`)}`
     : sec('最新成绩', `<span class="pwhen">暂无含真实模型的报告</span>`);
   const llmCard = `
       <div class="ptitle">模型层评测</div>
@@ -1626,7 +1627,7 @@ async function renderPortal(reports) {
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(aLatest.pass_rate || 0)}">${esc(aLatest.passed ?? 0)}/${esc(aLatest.total ?? 0)}</b></span>
         <span class="pchip">工具选择 <b class="rate" style="color:${rateColor(aLatest.tool_rate || 0)}">${pct(aLatest.tool_rate || 0)}</b></span>
         ${aRs ? `<span class="badge ${aRs.全部一致 ? 'pass' : 'warn'}">repeat ${esc(aRs.遍数)} 遍${aRs.全部一致 ? '全部一致' : '存在抖动'}</span>` : ''}
-        <span class="pwhen">${esc(fmtTime(aLatest.time))}</span>`)
+        <span class="pwhen">${esc(fmtTime(aLatest.time_display))}</span>`)
       : sec('最新成绩', `<span class="pwhen">暂无结果</span>`)}`;
 
   // RAG 层：第三张卡。口径同 #rag 页——检索层与生成层分开看，才能归因。
@@ -1642,9 +1643,9 @@ async function renderPortal(reports) {
       ${rLatest ? sec('最新成绩', `
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(rLatest.pass_rate || 0)}">${esc(rLatest.passed ?? 0)}/${esc(rLatest.total ?? 0)}</b></span>
         <span class="pchip">recall@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
-        <span class="pwhen">${esc(fmtTime(rLatest.time))}</span>`)
+        <span class="pwhen">${esc(fmtTime(rLatest.time_display))}</span>`)
       : sec('最新成绩', rOnlySelfcheck
-          ? `<span class="pwhen">暂无真实模型成绩（最近一次 ${esc(fmtTime(rAny.time))} 是自检跑，不进成绩）</span>`
+          ? `<span class="pwhen">暂无真实模型成绩（最近一次 ${esc(fmtTime(rAny.time_display))} 是自检跑，不进成绩）</span>`
           : `<span class="pwhen">暂无结果</span>`)}`;
 
   $app.innerHTML = `
@@ -1723,7 +1724,7 @@ async function renderList(reports) {
     <a class="back" href="#">← 返回实验室首页</a>
     ${bannerData ? renderBanner(bannerData) : ''}
     <h1>LLM 评测</h1>
-    <div class="sub">真实评测报告 ${main.length} 份 · 框架自检 ${selfChecks.length} 次${scoring ? ` · 最新真实评测 ${esc(scoring.time)}` : ' · 暂无真实评测'}</div>
+    <div class="sub">真实评测报告 ${main.length} 份 · 框架自检 ${selfChecks.length} 次${scoring ? ` · 最新真实评测 ${esc(scoring.time_display)}` : ' · 暂无真实评测'}</div>
     <div class="grid" style="margin-bottom:16px">
       <div class="stat"><div class="k">真实评测报告</div><div class="v">${main.length}</div>
         <div class="catname">自检 ${selfChecks.length} 次见列表底部</div></div>
@@ -1733,7 +1734,7 @@ async function renderList(reports) {
         <div class="v" style="font-size:15px">${scoringRows.length
           ? scoringRows.map(x => `<div>${esc(x.model)} <b style="color:${rateColor(listRate(scoring, x))}">${pct(listRate(scoring, x))}</b></div>`).join('')
           : '<span class="catname">—</span>'}</div></div>
-      <div class="stat"><div class="k">成绩日期</div><div class="v" style="font-size:14px">${esc(scoring ? scoring.time : '—')}</div>
+      <div class="stat"><div class="k">成绩日期</div><div class="v" style="font-size:14px">${esc(scoring ? scoring.time_display : '—')}</div>
         <div class="catname">${scoring ? '此后的更新为管道自检' : '尚无真实评测'}</div></div>
     </div>
     ${hasTests ? `
@@ -1777,7 +1778,7 @@ async function renderList(reports) {
         return `
         <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
           <td>#${reports.length - i} ${typeBadge(r)} <span class="badge">${r.tag || 'run'}</span>${multi ? ` <span class="badge">${r.model_rows.length} 模型</span>` : ''}</td>
-          <td class="catname">${esc(r.time)}</td>
+          <td class="catname">${esc(r.time_display)}</td>
           <td>${modelCell}</td>
           <td>${totalCell}</td>
           <td>${pfCell}</td>
@@ -1798,7 +1799,7 @@ async function renderList(reports) {
           return `
         <tr class="rowlink" data-go="${encodeURIComponent(r.file)}/summary">
           <td>#${reports.length - reports.indexOf(r)} ${typeBadge(r)} <span class="badge">${r.tag || 'run'}</span></td>
-          <td class="catname">${esc(r.time)}</td>
+          <td class="catname">${esc(r.time_display)}</td>
           <td>${multi ? multiCell(r, x => `<div>${esc(x.model)}</div>`) : esc(r.model)}</td>
           <td>${caseCountText(r)}</td>
           ${multi ? `<td>${multiCell(r, x => rateInner(listRate(r, x)))}</td>` : rateCell(listRate(r, r))}
@@ -2174,7 +2175,7 @@ async function renderDiffTab(r, file) {
   baseSel.style.cssText = 'background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font:inherit';
   baseSel.innerHTML = `<option value="">（请选择基线）</option>` +
     reports.filter(x => x.file !== file).map(x =>
-      `<option value="${esc(x.file)}" ${x.file===defaultBase?'selected':''}>${esc(x.time)} · ${esc(x.model)} · ${esc(x.file)}</option>`
+      `<option value="${esc(x.file)}" ${x.file===defaultBase?'selected':''}>${esc(x.time_display)} · ${esc(x.model)} · ${esc(x.file)}</option>`
     ).join('');
   document.getElementById('tabBody').innerHTML = `
     <div class="toolbar">
@@ -2585,6 +2586,8 @@ def _load_reports():
         entry = {
             "file": p.name,
             "time": (m.group(0) if m else data.get("started_at", "?")),
+            # 给前端显示用的规范化时间（文件名时间戳同样会被 tag 里的日期带偏，交给 normalize_display_time）
+            "time_display": normalize_display_time(data.get("started_at"), p.name),
             "tag": p.stem.split("-")[0] if "-" in p.stem else "run",
             "model": summary.get("model", "?"),
             "models": [row["model"] for row in model_rows],
@@ -2645,6 +2648,59 @@ def _load_tests_summary():
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+_ISO_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})")
+_DATE_ONLY_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+
+
+def _stamp_to_display(s):
+    """从文件名/紧凑串里认出「8 位日期 + 6 位时间」，**从后往前**取第一对。
+
+    文件名形态不统一：``report-clean-20261027-20261027-214243`` 里 tag 后面紧跟的
+    那段也是 8 位日期，按位置切必然错位。**只看数字段、且从末尾配对**，才能稳定
+    拿到真正的时间戳（末尾那对），顺带跳过 ``repeat3`` 这类夹在中间的数字。
+    认不出返回 None，交给上层决定兜底。
+    """
+    nums = re.findall(r"\d+", s)
+    for i in range(len(nums) - 1, 0, -1):
+        if len(nums[i - 1]) == 8 and len(nums[i]) == 6:
+            day, clock = nums[i - 1], nums[i]
+            return f"{day[:4]}-{day[4:6]}-{day[6:8]} {clock[:2]}:{clock[2:4]}"
+    # 14 位连写（20261027214243）：前 8 位日期 + 后 6 位时间
+    for n in nums:
+        if len(n) == 14:
+            return f"{n[:4]}-{n[4:6]}-{n[6:8]} {n[8:10]}:{n[10:12]}"
+    return None
+
+
+def normalize_display_time(*sources) -> str:
+    """把各种来源的时间戳统一成 ``YYYY-MM-DD HH:MM``；认不出来就给 ``—``。
+
+    由来（晓旭 2026-10-28 在页面发现）：报告文件名形如
+    ``report-clean-20261027-20261027-214243``——**tag 里也带日期**，用
+    ``\\d{8}-\\d{6}`` 取**第一组**会切出 ``20261027-202610`` 这种半截串，#llm 页
+    「成绩日期」就显示成那样；RAG 侧的 ``time`` 本就已是 ``2026-10-28 04:53:19``，
+    前端再按 15 位下标二次切割又切成乱码。
+
+    所以这里定一条规矩：**时间戳只由后端解析一次**，取文件名里**末尾**那组
+    （真正的时间戳在末尾，tag 里的日期在前面），并优先信任报告内的 ISO 时间；
+    解析不出就给 ``—``，**不许显示半截数字**。前端拿到什么显示什么，不再切。
+    """
+    for src in sources:
+        if not src:
+            continue
+        s = str(src)
+        m = _ISO_RE.search(s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)} {m.group(4)}:{m.group(5)}"
+        out = _stamp_to_display(s)
+        if out:
+            return out
+        m = _DATE_ONLY_RE.search(s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return "—"
 
 
 def _agent_stamp(name: str):
@@ -2793,6 +2849,7 @@ def _agent_entry(path: Path, archived: bool, with_trajectory: bool = False):
         # 和「没换脑子」的成绩在同一行里混着看。
         "brain": str(data.get("model") or "deepseek-chat"),
         "time": _agent_stamp(path.name) or data.get("finished_at") or data.get("started_at") or "?",
+        "time_display": normalize_display_time(data.get("finished_at"), data.get("started_at"), path.name),
         "repeat": repeat,
         "total": summary.get("任务总数"),
         "passed": summary.get("通过"),
@@ -2981,6 +3038,7 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
     entry = {
         "file": path.name,
         "time": _rag_time(stamp),
+        "time_display": normalize_display_time(data.get("started_at"), stamp),
         "archived": archived,
         "models": models,
         "model": models[0] if models else "—",
