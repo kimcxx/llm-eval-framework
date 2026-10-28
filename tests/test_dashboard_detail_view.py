@@ -67,10 +67,10 @@ class TestMatrixTemplate:
         assert "const single = models.length <= 1" in app.PAGE
         assert "single ? '' : spreadHtml(spread)" in app.PAGE
 
-    def test_old_dimensions_fall_back_to_dim_key_of(self) -> None:
-        """老报告的维度仍由 caseDimOf / dimKeyOf 归一（cases 里没有 dimension 字段）。"""
+    def test_case_dimension_uses_declared_tag_only(self) -> None:
+        """逐题维度只用用例自带的 dimension，不拿分类顶替（分类 ≠ 维度，Q8 裁决）。"""
         assert "const caseDimOf" in app.PAGE
-        assert "dimKeyOf((c && c.dimension) || cat)" in app.PAGE
+        assert "const caseDimOf = c => dimKeyOf(c && c.dimension);" in app.PAGE
 
 
 # ============================== 报告属性条（数据契约） ============================== #
