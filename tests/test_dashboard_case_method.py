@@ -7,7 +7,10 @@
     是哪把尺子量出来的 —— 判定方式透明化是评测工具的基本操守。
 
 契约要点：
-    * 用例列表表格有一列「判定」，显示该 case 实际走过的指标的**中文标签**；
+    * 用例列表表格有一列「判定方式」，显示该 case 实际走过的指标的**中文标签**；
+      （2026-10-27 起与「能力指标」列分开：能力 = 测什么，判定方式 = 怎么判，详见
+      ``tests/test_dashboard_case_dimension.py``；列名由「判定」改齐为「判定方式」，
+      与 RAG 层同一叫法）
     * 多指标的用例（如「语义相似度 + LLM 裁判」）**全部列出**，不许只显示第一个；
     * 标签来自后端 ``METRIC_LABELS``（与 Python 侧同一份数据），未收录的原样显示；
     * 没有指标的用例显示「—」，不编造判定方式；
@@ -37,18 +40,18 @@ def _drawer_body() -> str:
 
 
 class TestMethodColumnExists:
-    """表格必须有「判定」列，且每行都填。"""
+    """表格必须有「判定方式」列，且每行都填。"""
 
     def test_header_has_method_column(self) -> None:
         header = _cases_tab_body()
-        assert "<th" in header and "判定</th>" in header, "用例列表缺「判定」列"
+        assert "<th" in header and "判定方式</th>" in header, "用例列表缺「判定方式」列"
 
     def test_method_column_sits_between_category_and_repeat(self) -> None:
         header = _cases_tab_body()
         i_cat = header.index("分类</th>")
-        i_method = header.index("判定</th>")
+        i_method = header.index("判定方式</th>")
         i_repeat = header.index("通过次数</th>")
-        assert i_cat < i_method < i_repeat, "「判定」列应排在「分类」与「通过次数」之间"
+        assert i_cat < i_method < i_repeat, "「判定方式」列应排在「分类」与「通过次数」之间"
 
     def test_every_row_renders_method_cell(self) -> None:
         body = _cases_tab_body()
