@@ -49,6 +49,14 @@ DIMENSION_LABELS: dict[str, str] = {
 UNTAGGED_DIMENSION = "untagged"
 UNTAGGED_DIMENSION_LABEL = "未标注"
 
+# 能力维度的**口径版本**：写进报告 JSON，看板据此判断「这份报告的维度数是按哪套
+# 口径算的」。由来（Q8 裁决）：过去看板为了迁就老报告，自己按 categories 重算一份
+# 维度数，于是报告存一份、页面算一份，同一份报告同一模型对不上（报告 correctness=51、
+# 页面 42），还会把未知分类（rag_cases）当成维度键。现在定死：**维度只算一次，落在
+# 报告里**；看板遇到没有这个字段（或版本不同）的老报告，显式标注「口径为旧版」，
+# **不许自己再算一份新的**。改口径时同步改这个版本号。
+DIMENSION_SCHEMA_VERSION = "v2"
+
 
 class DatasetError(ValueError):
     """数据集格式非法。"""

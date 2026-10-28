@@ -153,66 +153,75 @@ CATEGORY_DIMENSION = {
 }
 # 旧维度名 → 新维度名（format 是指令遵循的旧称）
 LEGACY_DIMENSION_ALIASES = {'format': 'instruction_following'}
+# 维度口径版本：与 src/datasets/schema.py 的 DIMENSION_SCHEMA_VERSION 一一对应
+# （tests/test_dashboard_dimensions.py 守护两侧同步）。报告里写明它，看板据此判断
+# 「这份维度数是按哪套口径算的」——缺这个字段的就是老报告，看板**标注旧口径**，
+# 而不是自己再算一份新的（Q8 裁决）。
+DIMENSION_SCHEMA_VERSION = "v2"
+# 用例没打标签 / 维度名认不出时归入这一组，页面显示「未标注」
+UNTAGGED_DIMENSION = 'untagged'
+KNOWN_DIMENSIONS = frozenset(DIMENSION_ORDER) | {UNTAGGED_DIMENSION}
 
 
 def _dimension_key(raw):
-    """把报告里的维度名 / 分类名归一成四类维度之一。
+    """把报告里的维度名归一成四类之一；**认不出的归入「未标注」，绝不新造维度名**。
 
-    认不出的原样返回：宁可在报告里看到一行陌生维度，也不要静默丢掉数据。
+    Q8 裁决：分类 ≠ 维度。以前这里认不出就**原样返回**（还拿分类名换算），于是
+    数据集名 ``rag_cases`` 直接冒充成了一个维度，页面多出一行假的「rag_cases」。
+    现在只认白名单（四类 + 未标注）与旧名别名，其余一律进「未标注」。
     """
     key = str(raw or '').strip().lower()
     if not key:
-        return None
+        return UNTAGGED_DIMENSION
     if key in LEGACY_DIMENSION_ALIASES:
         return LEGACY_DIMENSION_ALIASES[key]
-    if key in CATEGORY_DIMENSION:  # 老报告给的是 category，按表换算
-        return CATEGORY_DIMENSION[key]
-    return key
+    if key in KNOWN_DIMENSIONS:
+        return key
+    return UNTAGGED_DIMENSION
 
 
 def _case_dimension(case):
-    """单条用例归到哪个维度：**已知分类一律按分类重算**，未知分类才用自带 dimension。
+    """单条用例归到哪个维度：**只用用例自带的 ``dimension`` 标签，不按分类重算**。
 
-    老报告的 ``cases[]`` 里存的 dimension 是旧口径（qa_open 记在 correctness），
-    照抄会让详情页出现「准确性 50 题」而首页重算是 42 题——又是两套数字。新报告
-    的打标与分类映射本来就一致，重算不改变它们；自定义分类才退回用例自带的标签
-    （那是数据集作者更精确的表达）。
+    分类是「这道题来自哪个数据集」，维度是「这道题测什么能力」——两回事。按分类
+    重算会让页面算出一份与报告不同的数（Q8：报告 correctness=51、页面 42）。
+    用例没打标签或标签认不出时归入「未标注」。
     """
     if not isinstance(case, dict):
         return None
-    key = str(case.get('category') or '').strip().lower()
-    if key in CATEGORY_DIMENSION:
-        return CATEGORY_DIMENSION[key]
-    return _dimension_key(case.get('dimension') or case.get('category'))
+    return _dimension_key(case.get('dimension'))
+
+
+def _dimension_schema_legacy(doc):
+    """这份报告的维度口径是不是旧版（页面该标注、读者不该拿它跟新报告横向比）。
+
+    报告里写明口径版本（``dimension_schema_version``）；缺这个字段或版本对不上
+    的就是老报告。此时页面**照抄**报告里存的维度数并标注「口径为旧版」，
+    绝不自己按分类重算一份新数（那正是 Q8 的病根）。
+    """
+    if not isinstance(doc, dict):
+        return True
+    return doc.get('dimension_schema_version') != DIMENSION_SCHEMA_VERSION
 
 
 def _dimension_summary(doc, model):
-    """算一份报告的「各维度通过率」行，供首页维度速览展示。
+    """算一份报告的「各维度通过率」行——**只读报告里的 dimensions 段，不重算**。
 
-    数据源按优先级：
+    Q8 裁决：维度统计**只算一次**，落在报告 JSON（``src/runner/results.py`` 按用例
+    自带的 dimension 标签聚合）；看板原样显示。以前这里按 categories 重算（本意是
+    迁就老报告、让它们也用新口径），结果是报告存一份、页面算一份，同一份报告同一
+    模型对不上（报告 correctness=51、页面 42），而且未知分类（rag_cases）被当成
+    维度键，冒出一个假维度。
 
-    1. ``categories`` 段 —— 按「分类 → 维度」**重算**。老报告的 dimensions 段是
-       生成时按旧口径分组的（qa_open 并进了 correctness），改不了；重算才能让
-       老报告与新报告同一口径，满足「qa_open 不再出现在准确性里」。
-    2. ``cases[]`` —— 逐条按 category 归并（categories 段缺失时的兜底）
-    3. ``dimensions`` 段 —— 前两者都没有时的最后兜底（老维度名在此归一）
+    只有报告**连 dimensions 段都没有**（更老的报告）时才从 cases[] 兜底算——那份
+    数是页面算的，前端会标注「口径为旧版」（见 ``_dimension_schema_legacy``），
+    不让读者误以为它是当前口径的数。
 
     返回 ``[{dimension, label, total, passed, pass_rate}]``，按 DIMENSION_ORDER
     排序；什么都取不到时返回空列表（前端不渲染该行，而不是画一排 0%）。
     """
     if not isinstance(doc, dict):
         return []
-
-    agg: dict[str, list[int]] = {}
-    # 已经聚合过、但没留样本量的行（dimensions 段里只有 pass_rate 的老数据）
-    precounted: list[dict] = []
-
-    def add(dim, total, passed):
-        if not dim or not total:
-            return
-        bucket = agg.setdefault(dim, [0, 0])
-        bucket[0] += int(total)
-        bucket[1] += int(passed)
 
     def build_row(dim, total, passed):
         return {
@@ -223,42 +232,43 @@ def _dimension_summary(doc, model):
             'pass_rate': (passed / total) if total else 0.0,
         }
 
-    # 1) categories 段（老报告 / dashboard/data 普遍有）
-    for row in (_candidates_for(doc.get('categories'), model) or []):
-        if isinstance(row, dict):
-            add(_dimension_key(row.get('category')), row.get('total', 0), row.get('passed', 0))
+    rows: list[dict] = []
+    # 真相源：报告里存好的维度统计，照抄
+    for row in (_candidates_for(doc.get('dimensions'), model) or []):
+        if not isinstance(row, dict):
+            continue
+        dim = _dimension_key(row.get('dimension'))
+        if not dim:
+            continue
+        if row.get('total'):
+            rows.append(build_row(dim, int(row.get('total', 0)), int(row.get('passed', 0))))
+        else:
+            # 只有通过率、没留样本量：原样保留这一行，别因为缺字段整份丢掉
+            rows.append({
+                'dimension': dim,
+                'label': _BANNER_DIM_LABELS.get(dim, dim),
+                'total': None,
+                'passed': None,
+                'pass_rate': float(row.get('pass_rate') or 0.0),
+            })
 
-    # 2) cases[] 逐条归并
-    if not agg:
+    # 更老的报告连 dimensions 段都没有：按用例自带标签兜底（前端标注「口径为旧版」）
+    if not rows:
+        agg: dict[str, list[int]] = {}
         for case in (doc.get('cases') or []):
             if not isinstance(case, dict):
                 continue
             if model and case.get('model') and case.get('model') != model:
                 continue
-            add(_case_dimension(case), 1, 1 if case.get('passed') is True else 0)
-
-    # 3) dimensions 段（口径是生成时的，仅作兜底）
-    if not agg:
-        for row in (_candidates_for(doc.get('dimensions'), model) or []):
-            if not isinstance(row, dict):
-                continue
-            dim = _dimension_key(row.get('dimension'))
+            dim = _case_dimension(case)
             if not dim:
                 continue
-            if row.get('total'):
-                add(dim, row.get('total', 0), row.get('passed', 0))
-            else:
-                # 只有通过率、没留样本量：原样保留这一行，别因为缺字段整份丢掉
-                precounted.append({
-                    'dimension': dim,
-                    'label': _BANNER_DIM_LABELS.get(dim, dim),
-                    'total': None,
-                    'passed': None,
-                    'pass_rate': float(row.get('pass_rate') or 0.0),
-                })
+            bucket = agg.setdefault(dim, [0, 0])
+            bucket[0] += 1
+            bucket[1] += 1 if case.get('passed') is True else 0
+        rows = [build_row(dim, counts[0], counts[1]) for dim, counts in agg.items()]
 
     order = {name: index for index, name in enumerate(DIMENSION_ORDER)}
-    rows = [build_row(dim, counts[0], counts[1]) for dim, counts in agg.items()] or precounted
     rows.sort(key=lambda row: (order.get(str(row['dimension']), len(DIMENSION_ORDER)), str(row['dimension'])))
     return rows
 
@@ -545,21 +555,21 @@ ATTRIBUTE_NOTES = {
 def _covered_dimensions(doc):
     """报告实际覆盖到哪些维度（去重，按 DIMENSION_ORDER 排序）。
 
-    优先按 ``cases[]`` 逐条算（老报告没有 dimensions 段也能算出来）；
-    没有 cases 时才退回报告里存的 ``dimensions`` 段。
+    与 ``_dimension_summary`` 同一个规矩（Q8 裁决）：**能照抄就照抄**——真相源是
+    报告里的 ``dimensions`` 段；连这段都没有（更老的报告）才按用例自带标签兜底。
     """
     keys = set()
-    for case in (doc.get('cases') or []):
-        key = _case_dimension(case)
-        if key:
-            keys.add(key)
+    for row in (_candidates_for(doc.get('dimensions'), None) or []):
+        if isinstance(row, dict):
+            key = _dimension_key(row.get('dimension'))
+            if key:
+                keys.add(key)
 
     if not keys:
-        for row in (_candidates_for(doc.get('dimensions'), None) or []):
-            if isinstance(row, dict):
-                key = _dimension_key(row.get('dimension'))
-                if key:
-                    keys.add(key)
+        for case in (doc.get('cases') or []):
+            key = _case_dimension(case)
+            if key:
+                keys.add(key)
 
     order = {name: index for index, name in enumerate(DIMENSION_ORDER)}
     return sorted(keys, key=lambda k: (order.get(k, len(DIMENSION_ORDER)), k))
@@ -862,25 +872,27 @@ const DIM_LABELS = __DIM_LABELS__;
 const CATEGORY_DIMENSION = __CATEGORY_DIMENSION__;
 const LEGACY_DIM_ALIASES = __LEGACY_DIM_ALIASES__;
 const DIMENSION_ORDER = __DIMENSION_ORDER__;
+const KNOWN_DIMENSIONS = __KNOWN_DIMENSIONS__;
+const DIM_SCHEMA_VERSION = __DIMENSION_SCHEMA_VERSION__;
+// 这份报告的维度口径是不是旧版（报告里写明版本，缺字段的就是老报告）。
+// 旧口径**照抄报告里的数**并显式标注，绝不重算一份新的（Q8 裁决）。
+const isLegacyDimSchema = doc => !doc || doc.dimension_schema_version !== DIM_SCHEMA_VERSION;
+const legacyDimBadge = legacy => (legacy
+  ? ' <span class="badge" title="这份报告生成时用的维度口径与当前不同，数字照抄报告原文，未重算">口径为旧版</span>'
+  : '');
+const legacyDimNote = doc => legacyDimBadge(isLegacyDimSchema(doc));
 const dimLabel = d => d ? (DIM_LABELS[d] || d) : '未标注';
-// 老报告的 cases 没有 dimension 字段（或写的是旧名 format）：按分类换算成四类之一，
-// 否则整份老报告的维度表会全部落进「未标注」
+// 维度：只认四类白名单 + 「未标注」。**分类不是维度**（Q8 裁决）——以前认不出就
+// 原样返回、还拿分类名换算，于是数据集名 rag_cases 冒充成了一个维度。
 const dimKeyOf = raw => {
   const k = String(raw || '').trim().toLowerCase();
   if (!k) return 'untagged';
   if (LEGACY_DIM_ALIASES[k]) return LEGACY_DIM_ALIASES[k];
-  if (CATEGORY_DIMENSION[k]) return CATEGORY_DIMENSION[k];
-  return k;
+  return KNOWN_DIMENSIONS.includes(k) ? k : 'untagged';
 };
-// 单条用例归到哪个维度：已知分类一律按分类重算，未知分类才用用例自带的 dimension。
-// 老报告的 cases 里存的 dimension 是旧口径（qa_open 记在 correctness），照抄会让
-// 详情页出现「准确性 50 题」而首页是 42 题——又是两套数字。新报告的打标与分类
-// 映射本来就一致，重算不会改变它们。
-const caseDimOf = c => {
-  const cat = String((c && c.category) || '').trim().toLowerCase();
-  if (CATEGORY_DIMENSION[cat]) return CATEGORY_DIMENSION[cat];
-  return dimKeyOf((c && c.dimension) || cat);
-};
+// 单条用例归到哪个维度：**只用用例自带的 dimension 标签**，不按分类重算——
+// 重算会让页面算出一份与报告不同的数（Q8：报告 correctness=51、页面 42）。
+const caseDimOf = c => dimKeyOf(c && c.dimension);
 // 指标中文标签：由后端 METRIC_LABELS 注入（与 Python 侧同一份数据），未收录的原样显示
 const METRIC_LABELS = __METRIC_LABELS__;
 const metricLabel = m => METRIC_LABELS[m] || m;
@@ -966,7 +978,7 @@ const modelOverviewRowHtml = r => {
         ? r.dimension_coverage.join('、')
         : '—');
   return `<tr class="dimrow"><td colspan="7"><span class="dimlabel">模型</span>${chips}`
-    + `<span class="dimcover">覆盖：${esc(coverage)}</span></td></tr>`;
+    + `<span class="dimcover">覆盖：${esc(coverage)}${legacyDimBadge(r.dimension_schema_legacy)}</span></td></tr>`;
 };
 // 「2/3」+ 抖动标记
 const repeatCell = c => {
@@ -1056,25 +1068,23 @@ function dimensionSummary(doc, model) {
     return any ? any[1] : null;
   };
 
-  (pickGroup(doc.categories) || []).forEach(row => row && add(row.category, row.total, row.passed));
-  if (!agg.size) {
+  // 真相源：报告里存好的维度统计，照抄（Q8 裁决：页面不许重算）
+  const precounted = [];
+  (pickGroup(doc.dimensions) || []).forEach(row => {
+    if (!row || !row.dimension) return;
+    const dim = dimKeyOf(row.dimension);
+    if (Number(row.total) || 0) { add(row.dimension, row.total, row.passed); return; }
+    precounted.push({
+      dimension: dim, label: dimLabel(dim), total: null, passed: null,
+      pass_rate: Number(row.pass_rate) || 0,
+    });
+  });
+  // 更老的报告连 dimensions 段都没有：按用例自带标签兜底（页面会标注「口径为旧版」）
+  if (!agg.size && !precounted.length) {
     (doc.cases || []).forEach(c => {
       if (!c) return;
       if (model && c.model && c.model !== model) return;
-      add(c.dimension || c.category, 1, c.passed === true ? 1 : 0);
-    });
-  }
-  // dimensions 段兜底：样本量缺失的老数据只带 pass_rate，原样保留别丢
-  const precounted = [];
-  if (!agg.size) {
-    (pickGroup(doc.dimensions) || []).forEach(row => {
-      if (!row || !row.dimension) return;
-      const dim = dimKeyOf(row.dimension);
-      if (Number(row.total) || 0) { add(row.dimension, row.total, row.passed); return; }
-      precounted.push({
-        dimension: dim, label: dimLabel(dim), total: null, passed: null,
-        pass_rate: Number(row.pass_rate) || 0,
-      });
+      add(c.dimension, 1, c.passed === true ? 1 : 0);
     });
   }
   if (!agg.size && !precounted.length) return [];
@@ -2023,7 +2033,7 @@ function dimensionMatrixCard(matrix) {
 
   return `
     <div class="card">
-      <div style="font-weight:600;margin-bottom:4px">维度 × 模型 对比矩阵</div>
+      <div style="font-weight:600;margin-bottom:4px">维度 × 模型 对比矩阵${legacyDimNote(r)}</div>
       <div class="hint">行 = 能力维度（子行 = 具体分类），列 = 被测模型，格 = 通过率（下方小字为通过 / 总数）。
         <code>mock-*</code> 是管道基线，灰显、不作为被测对象；${single
           ? '本报告只有一个模型，矩阵退化为单列。'
@@ -2523,6 +2533,8 @@ PAGE = (
     .replace("__DIMENSION_ORDER__", json.dumps(list(DIMENSION_ORDER), ensure_ascii=False))
     .replace("__CATEGORY_DIMENSION__", json.dumps(CATEGORY_DIMENSION, ensure_ascii=False))
     .replace("__LEGACY_DIM_ALIASES__", json.dumps(LEGACY_DIMENSION_ALIASES, ensure_ascii=False))
+    .replace("__KNOWN_DIMENSIONS__", json.dumps(sorted(KNOWN_DIMENSIONS), ensure_ascii=False))
+    .replace("__DIMENSION_SCHEMA_VERSION__", json.dumps(DIMENSION_SCHEMA_VERSION, ensure_ascii=False))
 )
 
 
@@ -2607,10 +2619,12 @@ def _load_reports():
             "p95": summary.get("p95_latency_ms"),
         }
         # 维度速览：取代表模型（跳过 mock 对照组）的各维度通过率。
-        # 老报告没有 dimensions 段时按 categories 重算，保证与新报告同口径。
+        # 「照抄报告里存的那份」，不再按 categories 重算（Q8 裁决：一个真相源）。
         entry["dim_model"] = _pick_representative_model(entry)
         entry["dimensions"] = _dimension_summary(data, entry["dim_model"])
         entry["dimension_coverage"] = [row["label"] for row in entry["dimensions"]]
+        # 口径版本对不上（或缺字段）的老报告：页面标注「口径为旧版」，不拿它跟新报告横比
+        entry["dimension_schema_legacy"] = _dimension_schema_legacy(data)
         items.append(entry)
     items.sort(key=lambda x: _time_key(x["time"]), reverse=True)
     return items

@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable
 
 from src.datasets.schema import (
     DIMENSION_LABELS,
+    DIMENSION_SCHEMA_VERSION,
     DIMENSIONS,
     UNTAGGED_DIMENSION,
     UNTAGGED_DIMENSION_LABEL,
@@ -448,6 +449,9 @@ class EvalReport:
                 ]
                 for model in self.models
             },
+            # 维度口径版本：看板据此判断「该不该照抄这份维度数」。缺此字段的老报告
+            # 在看板上标注「口径为旧版」，而不是由看板重新算一份（Q8 裁决）。
+            "dimension_schema_version": DIMENSION_SCHEMA_VERSION,
             # 按能力维度汇总；未打 dimension 标签的用例归入 untagged
             "dimensions": {
                 model: [

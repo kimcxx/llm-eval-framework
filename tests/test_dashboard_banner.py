@@ -14,8 +14,9 @@
     * ``_weakest_dimension``：取最弱的能力维度，兼容 ``dict[model] -> list`` 与
       顶层 ``list``；``untagged`` 不参与最弱选择（用户看不到意义），但全
       ``untagged`` 时仍返回自身（让前端可显示「未标注」而不是 "—"）。
-      **口径唯一**：它复用 ``_dimension_summary`` 的结果，不直接读报告里存的
-      ``dimensions`` 段（那是生成时的快照，改口径后会过期）。
+      **口径唯一（Q8 裁决）**：它复用 ``_dimension_summary`` 的结果，而
+      ``_dimension_summary`` **照抄**报告里存的 ``dimensions`` 段——维度只算一次，
+      落在报告里；旧口径的报告照抄并标注「口径为旧版」，不重算。
     * ``compute_banner``：组合以上 + ``diff_cases``；
       - ``base`` 为 ``None`` 或同模型缺席 → ``delta_pt=None``（前端显示 "—"）
       - ``base_doc / curr_doc`` 任一缺失 → ``regressed=0, fixed=0``（不崩）
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import pytest
 
+import dashboard.app as dashboard_app
 from dashboard.app import (
     _pick_representative_model,
     _representative_rate,
@@ -159,19 +161,19 @@ class TestWeakestDimension:
         doc = {"dimensions": {"mock-baseline": [{"dimension": "format", "pass_rate": 0.25}]}}
         assert _weakest_dimension(doc, "deepseek-chat") == ("指令遵循", 0.25)
 
-    def test_categories_fallback_skips_mock_control_group(self) -> None:
-        """categories 兜底路径同样跳过 mock-*（老报告没有 dimensions 段）。
+    def test_dimensions_segment_skips_mock_control_group(self) -> None:
+        """真相源（dimensions 段）路径同样跳过 mock-* 对照组。
 
-        走的是「分类 → 维度」重算，所以露出的是维度名（指令遵循）而不是分类名
-        （json_extract）——banner 与首页速览必须叫同一个名字。
+        露出的是维度名（指令遵循）而不是分类名（json_extract）——banner 与首页
+        速览必须叫同一个名字。
         """
         doc = {
-            "categories": {
+            "dimensions": {
                 "mock-baseline": [
-                    {"category": "json_extract", "total": 18, "passed": 0, "pass_rate": 0.0}
+                    {"dimension": "instruction_following", "total": 18, "passed": 0, "pass_rate": 0.0}
                 ],
                 "deepseek-pro": [
-                    {"category": "json_extract", "total": 18, "passed": 13, "pass_rate": 0.72}
+                    {"dimension": "instruction_following", "total": 18, "passed": 13, "pass_rate": 0.72}
                 ],
             }
         }
@@ -179,24 +181,27 @@ class TestWeakestDimension:
         assert label == "指令遵循"
         assert rate == pytest.approx(13 / 18)
 
-    def test_recomputes_categories_instead_of_trusting_stored_dimensions(self) -> None:
-        """本报告存的 dimensions 段是**生成时的旧口径**，不能被 banner 直接采信。
+    def test_trusts_stored_dimensions_instead_of_recomputing(self) -> None:
+        """Q8 裁决：banner **照采**报告里存的 dimensions 段，**不按 categories 重算**。
 
-        场景：报告里有 categories（math 20 题 + qa_open 8 题），而 dimensions 段
-        还是「correctness 50 题」的旧聚合（qa_open 被并进准确性）。重算后
-        qa_open 属于相关性，准确性只剩 20 题——banner 必须按新口径走。
+        场景与裁决前那条测试完全一样（报告里有 categories：math 20 + qa_open 8，
+        dimensions 段是「correctness 50 题」的旧聚合），但结论反过来了：这份报告
+        没写口径版本号 → 它是**旧口径**，看板照抄（最弱维度 = 准确性 60%）并标注
+        「口径为旧版」，而不是自己算出「相关性 25%」——那正是「报告存一份、
+        页面算一份」的病根。
         """
         doc = {
             "categories": {"m": [
                 {"category": "math_reasoning", "total": 20, "passed": 20, "pass_rate": 1.0},
                 {"category": "qa_open", "total": 8, "passed": 2, "pass_rate": 0.25},
             ]},
-            # 过期快照：旧口径把 qa_open 算进了 correctness
+            # 旧口径快照：把 qa_open 算进了 correctness
             "dimensions": {"m": [
                 {"dimension": "correctness", "total": 50, "passed": 30, "pass_rate": 0.6},
             ]},
         }
-        assert _weakest_dimension(doc, "m") == ("相关性", 0.25)
+        assert _weakest_dimension(doc, "m") == ("准确性", 0.6)
+        assert dashboard_app._dimension_schema_legacy(doc) is True, "没写口径版本的老报告要被标出来"
 
     def test_returns_none_when_no_dimensions(self) -> None:
         """dimensions 段缺失 → None，前端显示 "—"。"""
