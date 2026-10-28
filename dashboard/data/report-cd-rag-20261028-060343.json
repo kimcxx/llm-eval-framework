@@ -1,0 +1,718 @@
+{
+  "started_at": "2026-10-28T06:03:43",
+  "finished_at": "2026-10-28T06:03:43",
+  "duration_s": 0.01,
+  "models": [
+    "rag-mock-baseline"
+  ],
+  "datasets": [
+    "rag_cases"
+  ],
+  "case_count": 13,
+  "repeat": 1,
+  "total_calls": 13,
+  "stability": 0.2308,
+  "flaky_count": 0,
+  "notes": [
+    "未配置可用裁判模型，judge 指标已被跳过",
+    "被测对象是项目内自建的 mini-RAG 固定管道：每问无条件检索 top-2 再生成，不做「要不要检索」的决策、不产生多步轨迹，因此与 Agent 层区分，单独成层。",
+    "检索后端：retriever(字符后端（降级）)；知识库：rag_eval/fixtures/knowledge_base.jsonl（14 段，冻结快照）。",
+    "检索层 recall@2 = 100.0%（可判 10 条，命中 10 条）；答错时可据此区分「没检索到」与「检索到了没用好」。",
+    "知识库与题目目前是占位版（取材项目自身可核对的事实），正式内容由出题方逐条拍板后替换。"
+  ],
+  "summary": [
+    {
+      "model": "rag-mock-baseline",
+      "total": 13,
+      "passed": 3,
+      "failed": 10,
+      "skipped": 0,
+      "errors": 0,
+      "pass_rate": 0.2308,
+      "stability": 0.2308,
+      "flaky": 0,
+      "avg_latency_ms": 0.56,
+      "p95_latency_ms": 1.24,
+      "cost": 0.0,
+      "total_tokens": 3669,
+      "metric_avg": {
+        "contains": 0.0,
+        "not_contains": 1.0
+      }
+    }
+  ],
+  "categories": {
+    "rag-mock-baseline": [
+      {
+        "category": "rag_cases",
+        "total": 13,
+        "passed": 3,
+        "failed": 10,
+        "pass_rate": 0.2308
+      }
+    ]
+  },
+  "dimension_schema_version": "v2",
+  "dimensions": {
+    "rag-mock-baseline": [
+      {
+        "dimension": "correctness",
+        "label": "准确性",
+        "total": 9,
+        "passed": 3,
+        "failed": 6,
+        "skipped": 0,
+        "pass_rate": 0.3333
+      },
+      {
+        "dimension": "relevance",
+        "label": "相关性",
+        "total": 4,
+        "passed": 0,
+        "failed": 4,
+        "skipped": 0,
+        "pass_rate": 0.0
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "rag-001",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "模型层的评测用例一共有多少条？",
+      "expected": "模型层共 5 个数据集、98 条用例。",
+      "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 2.04,
+      "prompt_tokens": 238,
+      "completion_tokens": 16,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['98']"
+        }
+      ],
+      "skipped_metrics": [],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+          "latency_ms": 2.04,
+          "prompt_tokens": 238,
+          "completion_tokens": 16,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['98']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-002",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "安全红队数据集是用什么方法判定信息泄露的？",
+      "expected": "采用埋标记加诱导泄露的方法，在 system prompt 里植入只应内部可见的标记，回答里出现该标记即判安全失败。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.29,
+      "prompt_tokens": 268,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['埋标记']"
+        }
+      ],
+      "skipped_metrics": [],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.29,
+          "prompt_tokens": 268,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['埋标记']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-003",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "Agent 评测层一共有多少道任务？",
+      "expected": "Agent 层共 10 道任务。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.23,
+      "prompt_tokens": 234,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['10']"
+        }
+      ],
+      "skipped_metrics": [],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.23,
+          "prompt_tokens": 234,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['10']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-004",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "similarity 指标在没有安装向量依赖时会怎样？",
+      "expected": "未安装 sentence-transformers 时自动降级为字符级相似度，并在报告中标注已降级、非语义结论。",
+      "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.34,
+      "prompt_tokens": 252,
+      "completion_tokens": 16,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['降级']"
+        }
+      ],
+      "skipped_metrics": [],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+          "latency_ms": 0.34,
+          "prompt_tokens": 252,
+          "completion_tokens": 16,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['降级']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-005",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "Agent 层的取数工具读的是哪一天的数据快照？",
+      "expected": "锚在 agent_eval/fixtures/eval_data_fixture.json，数据日期 2026-09-23。",
+      "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.28,
+      "prompt_tokens": 266,
+      "completion_tokens": 16,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['2026-09-23']"
+        }
+      ],
+      "skipped_metrics": [],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+          "latency_ms": 0.28,
+          "prompt_tokens": 266,
+          "completion_tokens": 16,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['2026-09-23']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-006",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "回归门禁脚本做对比时，默认的容差是多少？",
+      "expected": "回归门禁的整体与分类双层对比容差默认 0.02。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.53,
+      "prompt_tokens": 260,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['0.02']"
+        }
+      ],
+      "skipped_metrics": [],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.53,
+          "prompt_tokens": 260,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['0.02']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-007",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "relevance",
+      "prompt": "这个评测框架分成哪两层，各自考的是什么？",
+      "expected": "分两层：模型层考模型答得对不对，Agent 层考 agent 有没有调对工具、能不能多步走通。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.47,
+      "prompt_tokens": 251,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/2；缺失 ['模型层', 'Agent']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.47,
+          "prompt_tokens": 251,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/2；缺失 ['模型层', 'Agent']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-008",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "relevance",
+      "prompt": "为什么指标判定要设计成三态而不是简单的通过与失败？",
+      "expected": "判定是三态：通过、失败、跳过。裁判调用失败、参考文本缺失、依赖未安装属评测侧问题，记为跳过且不计入通过率分母。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.52,
+      "prompt_tokens": 281,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['跳过']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.52,
+          "prompt_tokens": 281,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['跳过']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-009",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "relevance",
+      "prompt": "数学题判分时，为什么取回答里的最后一个数值而不是任意一个数值？",
+      "expected": "数字类答案取回答里最后一个数值做匹配，因为题干本身含数字，出现期望数字就算对会让抄题不计算的模型被误判为正确。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.6,
+      "prompt_tokens": 291,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['最后一个数值']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.6,
+          "prompt_tokens": 291,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['最后一个数值']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-010",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "relevance",
+      "prompt": "qa_open 这类开放式问答为什么只由裁判模型判定？",
+      "expected": "qa_open 属于 judge_only_categories，只由 judge 判定（5 分制得 4 分），其它指标仅记录不参与通过判定。",
+      "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "passed": false,
+      "error": null,
+      "latency_ms": 0.71,
+      "prompt_tokens": 268,
+      "completion_tokens": 16,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['qa_open']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 0,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": false,
+          "error": null,
+          "response": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+          "latency_ms": 0.71,
+          "prompt_tokens": 268,
+          "completion_tokens": 16,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "contains",
+              "score": 0.0,
+              "passed": false,
+              "detail": "命中 0/1；缺失 ['qa_open']"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-011",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "这个项目的 RAG 层用的是什么向量数据库？",
+      "expected": "资料中没有相关信息。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": true,
+      "error": null,
+      "latency_ms": 0.47,
+      "prompt_tokens": 264,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "not_contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "未出现违禁内容（检查了 6 个词）"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 1,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": true,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.47,
+          "prompt_tokens": 264,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "not_contains",
+              "score": 1.0,
+              "passed": true,
+              "detail": "未出现违禁内容（检查了 6 个词）"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-012",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "这个框架目前支持部署到哪几家云厂商？",
+      "expected": "资料中没有相关信息。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": true,
+      "error": null,
+      "latency_ms": 0.45,
+      "prompt_tokens": 264,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "not_contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "未出现违禁内容（检查了 6 个词）"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 1,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": true,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.45,
+          "prompt_tokens": 264,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "not_contains",
+              "score": 1.0,
+              "passed": true,
+              "detail": "未出现违禁内容（检查了 6 个词）"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "rag-013",
+      "category": "rag_cases",
+      "dataset": "rag_cases",
+      "model": "rag-mock-baseline",
+      "dimension": "correctness",
+      "prompt": "这个项目的作者毕业于哪所大学？",
+      "expected": "资料中没有相关信息。",
+      "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "passed": true,
+      "error": null,
+      "latency_ms": 0.4,
+      "prompt_tokens": 261,
+      "completion_tokens": 23,
+      "cost": 0.0,
+      "metrics": [
+        {
+          "name": "not_contains",
+          "score": 1.0,
+          "passed": true,
+          "detail": "未出现违禁内容（检查了 5 个词）"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "repeat": 1,
+      "pass_count": 1,
+      "flaky": false,
+      "attempts": [
+        {
+          "index": 0,
+          "passed": true,
+          "error": null,
+          "response": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+          "latency_ms": 0.4,
+          "prompt_tokens": 261,
+          "completion_tokens": 23,
+          "cost": 0.0,
+          "metrics": [
+            {
+              "name": "not_contains",
+              "score": 1.0,
+              "passed": true,
+              "detail": "未出现违禁内容（检查了 5 个词）"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
