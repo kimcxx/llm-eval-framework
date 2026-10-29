@@ -47,17 +47,22 @@ class TestDatasetFocus:
 
     def test_every_case_has_focus_in_whitelist(self) -> None:
         cases = _cases()
-        assert len(cases) == 13, f"用例数变了（{len(cases)}），本单只动 focus 字段"
+        # 原先写死 13 条；rag-014~016（诱导编造）与 rag-017~022（加难度六题）之后是 22 条。
+        # 条数不该随每次加题就要改 → 只守「不少于当初那批」这个真风险。
+        assert len(cases) >= 13, "用例数变少了，是不是误删了题？"
         for c in cases:
             assert "focus" in c, f"{c['id']} 缺 focus 字段"
             assert c["focus"] in FOCUS_WHITELIST, f"{c['id']} 的 focus 非法：{c['focus']!r}"
 
     def test_focus_distribution(self) -> None:
-        """考点分布 = 现有 note 的归类：端到端 6 / 忠实度 4 / 无答案诚实 3。"""
+        """考点分布随加难度变化，这里钉住当前值：端到端 11 / 忠实度 7 / 无答案诚实 4。
+
+        改这个值前先确认是「加了题」还是「改动了既有题的 focus」——后者要说明理由。
+        """
         counts: dict[str, int] = {}
         for c in _cases():
             counts[c["focus"]] = counts.get(c["focus"], 0) + 1
-        assert counts == {"end_to_end": 6, "faithfulness": 4, "honesty": 3}, counts
+        assert counts == {"end_to_end": 11, "faithfulness": 7, "honesty": 4}, counts
 
     def test_judging_fields_untouched(self) -> None:
         """判据是红线：除 focus 外字段不许动（缺字段同样要红）。"""
@@ -68,9 +73,15 @@ class TestDatasetFocus:
             assert isinstance(c["metrics"], list) and c["metrics"], f"{c['id']} 的 metrics 被改了"
 
     def test_focus_matches_note(self) -> None:
-        """focus 必须与 note 里写的归类一致——不能题面写着诚实题却标了端到端。"""
+        """focus 必须与 note 里写的归类一致——不能题面写着诚实题却标了端到端。
+
+        rag-014 起换成「加难度·」前缀的新格式（写的是难度意图，不是三类归类），
+        这条口径只对旧格式（note 以「占位题」开头）用例生效——对它们的护栏强度不变。
+        """
         tag_by_focus = {"end_to_end": "端到端命中", "faithfulness": "忠实度", "honesty": "无答案诚实"}
-        for c in _cases():
+        legacy = [c for c in _cases() if c["note"].startswith("占位题")]
+        assert len(legacy) >= 13, "旧格式用例（占位题）是不是被删了？"
+        for c in legacy:
             assert tag_by_focus[c["focus"]] in c["note"], f"{c['id']} 的 note 与 focus 不符：{c['note']}"
 
 

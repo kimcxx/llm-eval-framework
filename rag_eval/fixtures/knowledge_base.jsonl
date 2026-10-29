@@ -12,3 +12,4 @@
 {"id": "kb-012", "title": "INVALID 存档永不统计", "text": "Agent 层结果文件名里带 -INVALID- 的是作废存档，例如跑错了题集的结果，任何汇总与对比都先排除它，规则见 agent_eval/results/README.md。正式结果在跑新的一轮时会被自动移进 archive 目录归档。"}
 {"id": "kb-013", "title": "judge_only_categories", "text": "开放式问答没有标准答案，字面相似度会把换个说法但答对了的回答判成失败，因此 run.judge_only_categories 里的分类默认只有 qa_open，这类分类只由 judge 判定，阈值 5 分制得 4 分，同类用例的其它指标仍然计算并写进报告明细，但降级为仅记录不参与通过判定。"}
 {"id": "kb-014", "title": "报告与看板", "text": "每轮评测产出 markdown、json、csv 与 latest 四份产物到 reports 目录。看板由 Python 标准库 http.server 实现，零第三方依赖，提供门户、模型层列表、报告详情与 Agent 层四个视图，并由 build_static.py 导出静态站供 Pages 发布。"}
+{"id": "kb-015", "title": "模型层用例数（已废弃的旧口径）", "text": "旧版记录：模型层 3 个数据集共 62 条用例，其中 qa_zh 20 条、json_extract 22 条、math_reasoning 20 条。该口径已被现行口径取代，不再适用。注：本段是评测用合成样本，用于模拟项目里真实存在的过期文档（旧 README、旧 CHANGELOG 之类），不是项目的真实历史。"}
