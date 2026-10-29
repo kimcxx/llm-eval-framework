@@ -144,11 +144,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--strict", action="store_true", help="缺少 API Key 的模型直接报错")
     parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="声明这次是**对照跑**（实验，不是成绩）：结果 JSON 写 run_kind=comparison，"
+        "看板不拿它当「最新成绩」。例如人为用 --no-embedding 强制降级做后端对比。",
+    )
+    parser.add_argument(
         "--retrieval-only",
         action="store_true",
         help="只跑检索层 recall@k，不调用任何模型（零成本，CI 可跑）",
     )
     return parser.parse_args(argv)
+
+
+def run_kind_of(args: Any, models: list[str]) -> str:
+    """这次跑的性质：`real`（正式）/ `comparison`（对照）/ `mock`（自检）。
+
+    `--compare` 是**显式声明**：对照跑必须自己说清楚，不许靠 tag 命名去猜——
+    tag 是给人看的，不是给程序判的（同一个 tag 既能跑正式也能跑对照）。
+    没声明时按模型名认自检跑（mock-* 是管道基线，不是被测对象）。
+    """
+
+    if getattr(args, "compare", False):
+        return "comparison"
+    if models and all(str(m).removeprefix("rag-").startswith("mock-") for m in models):
+        return "mock"
+    return "real"
 
 
 def rel_or_abs(path: Path) -> str:
@@ -346,6 +367,9 @@ def main(argv: list[str] | None = None) -> int:
     detail_rows = case_rows(report, cases, rag_clients)
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        # 这次跑的性质（real / comparison / mock）：看板据此决定它能不能进「最新成绩」。
+        # 对照跑（如强制降级做后端对比）是实验不是成绩，不许顶掉正式跑的位置。
+        "run_kind": run_kind_of(args, list(rag_clients.keys())),
         "models": list(rag_clients.keys()),
         "top_k": top_k,
         "retriever": retriever.describe(),
