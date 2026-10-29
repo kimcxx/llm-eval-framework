@@ -47,17 +47,22 @@ class TestDatasetFocus:
 
     def test_every_case_has_focus_in_whitelist(self) -> None:
         cases = _cases()
-        assert len(cases) == 13, f"用例数变了（{len(cases)}），本单只动 focus 字段"
+        # 原先写死 13 条；rag-014~016（诱导编造）与 rag-017~022（加难度六题）之后是 22 条。
+        # 条数不该随每次加题就要改 → 只守「不少于当初那批」这个真风险。
+        assert len(cases) >= 13, "用例数变少了，是不是误删了题？"
         for c in cases:
             assert "focus" in c, f"{c['id']} 缺 focus 字段"
             assert c["focus"] in FOCUS_WHITELIST, f"{c['id']} 的 focus 非法：{c['focus']!r}"
 
     def test_focus_distribution(self) -> None:
-        """考点分布 = 现有 note 的归类：端到端 6 / 忠实度 4 / 无答案诚实 3。"""
+        """考点分布随加难度变化，这里钉住当前值：端到端 11 / 忠实度 7 / 无答案诚实 4。
+
+        改这个值前先确认是「加了题」还是「改动了既有题的 focus」——后者要说明理由。
+        """
         counts: dict[str, int] = {}
         for c in _cases():
             counts[c["focus"]] = counts.get(c["focus"], 0) + 1
-        assert counts == {"end_to_end": 6, "faithfulness": 4, "honesty": 3}, counts
+        assert counts == {"end_to_end": 11, "faithfulness": 7, "honesty": 4}, counts
 
     def test_judging_fields_untouched(self) -> None:
         """判据是红线：除 focus 外字段不许动（缺字段同样要红）。"""
@@ -68,29 +73,47 @@ class TestDatasetFocus:
             assert isinstance(c["metrics"], list) and c["metrics"], f"{c['id']} 的 metrics 被改了"
 
     def test_focus_matches_note(self) -> None:
-        """focus 必须与 note 里写的归类一致——不能题面写着诚实题却标了端到端。"""
+        """focus 必须与 note 里写的归类一致——不能题面写着诚实题却标了端到端。
+
+        rag-014 起换成「加难度·」前缀的新格式（写的是难度意图，不是三类归类），
+        这条口径只对旧格式（note 以「占位题」开头）用例生效——对它们的护栏强度不变。
+        """
         tag_by_focus = {"end_to_end": "端到端命中", "faithfulness": "忠实度", "honesty": "无答案诚实"}
-        for c in _cases():
+        legacy = [c for c in _cases() if c["note"].startswith("占位题")]
+        assert len(legacy) >= 13, "旧格式用例（占位题）是不是被删了？"
+        for c in legacy:
             assert tag_by_focus[c["focus"]] in c["note"], f"{c['id']} 的 note 与 focus 不符：{c['note']}"
 
 
 class TestMetricsSummary:
     """四项指标汇总。"""
 
-    def test_four_items_present(self) -> None:
+    def test_five_items_present(self) -> None:
+        """五项指标：命中率@2 与 召回率@2 是**两项**，名字都不许再叫 Recall。"""
         rows = [
             _row("rag-001", "end_to_end", "通过"),
             _row("rag-011", "honesty", "通过"),
             _row("rag-007", "faithfulness", "通过"),
         ]
         ms = rag_focus_summary(rows, {"recall_at_k": 1.0, "k": 2, "scored": 10, "hit": 10})
-        for key in ("recall_at_k", "end_to_end", "honesty", "faithfulness"):
+        for key in ("recall_at_k", "recall_ratio_at_k", "end_to_end", "honesty", "faithfulness"):
             assert key in ms, f"缺指标项 {key}"
             assert ms[key]["label"], f"{key} 缺标签"
         assert ms["end_to_end"]["value"] == 1.0
         assert ms["end_to_end"]["scored"] == 3
         assert ms["honesty"]["value"] == 1.0
-        assert ms["recall_at_k"]["label"] == "检索层 Recall@2"
+        # 名字写准：这是**命中率**（Hit Rate@2），不是召回率
+        assert ms["recall_at_k"]["label"] == "检索层 命中率@2"
+        assert ms["recall_ratio_at_k"]["label"] == "检索层 召回率@2"
+        assert "Recall" not in json.dumps(ms, ensure_ascii=False), "指标标签里不许再出现 Recall 这个错名字"
+
+    def test_missing_recall_ratio_is_not_guessed(self) -> None:
+        """老结果没有召回率字段 → value 为 None + 给出原因，不许拿命中率顶替。"""
+        rows = [_row("rag-001", "end_to_end", "通过")]
+        ms = rag_focus_summary(rows, {"recall_at_k": 1.0, "k": 2, "scored": 1, "hit": 1})
+        assert ms["recall_ratio_at_k"]["value"] is None, "没有这个数就是没有，不猜"
+        assert "需重跑" in ms["recall_ratio_at_k"]["reason"]
+        assert ms["recall_at_k"]["value"] == 1.0, "命中率照旧有值"
 
     def test_skipped_cases_excluded_from_denominator(self) -> None:
         """跳过不计入分母（三态口径）：3 条里 2 通过 1 跳过 → 2/2 而不是 2/3。"""

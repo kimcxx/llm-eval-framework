@@ -1282,7 +1282,7 @@ async function renderAgent() {
 }
 
 // RAG 评测页（#rag）：与模型层、Agent 层并列的第三层。
-// 这里要看三件事：检索找没找对（recall@k）、生成有没有忠于资料、资料里没有时会不会编。
+// 这里要看三件事：检索找没找对（命中率@k / 召回率@k）、生成有没有忠于资料、资料里没有时会不会编。
 // 逐题把「它依据了哪几段」摆出来，是因为 RAG 的错误有两种完全不同的病因——
 // 没检索到（检索层的锅）和检索到了没用好（生成层的锅），混在一起看就没法归因。
 // 「检索后端」卡片：后端降级时必须显式标出来（kb-007 口径：降级不是沉默的），
@@ -1336,13 +1336,17 @@ function ragMetricStat(m) {
       <div class="k">judge 缺席，不计入通过率</div></div>`;
   }
   const hasValue = Number.isFinite(Number(m.value));
+  // 没有数就写「没有」：老结果缺字段时显示它自带的 reason（如「需重跑」），
+  // 而不是拿 0 或另一个指标顶替——那等于猜一个数字给读者看。
+  const shown = hasValue ? pct(m.value) : (m && m.reason ? esc(m.reason) : '—');
+  const tail = hasValue ? `${esc(m.passed ?? 0)} / ${esc(m.scored ?? 0)}${esc(m.unit || '')}` : '';
   return `<div class="stat"><div class="k">${esc(m.label || '')}</div>
-    <div class="v"${hasValue ? ` style="color:${rateColor(m.value)}"` : ''}>${hasValue ? pct(m.value) : '—'}</div>
-    <div class="k">${esc(m.passed ?? 0)} / ${esc(m.scored ?? 0)}</div></div>`;
+    <div class="v"${hasValue ? ` style="color:${rateColor(m.value)}"` : ''}>${shown}</div>
+    <div class="k">${tail}</div></div>`;
 }
 
 function ragMetricsSummaryCard(ms) {
-  const keys = ['recall_at_k', 'end_to_end', 'honesty', 'faithfulness'];
+  const keys = ['recall_at_k', 'recall_ratio_at_k', 'end_to_end', 'honesty', 'faithfulness'];
   const has = keys.some(k => ms && ms[k]);
   if (!has) {
     return `<div class="card">
@@ -1395,8 +1399,14 @@ async function renderRag() {
   // latest 是「最近一次真实模型的跑」（后端已跳过 mock 自检）；latest_any 是最近一次跑（可能是自检）
   const latest = (a && a.latest) || null;
   const latestAny = (a && a.latest_any) || null;
-  const onlySelfcheck = !latest && !!latestAny;
-  const selfcheckIsNewer = !!(latest && latestAny && latestAny.is_mock && latestAny.file !== latest.file);
+  const onlySelfcheck = !latest && !!latestAny && latestAny.run_kind === 'mock';
+  const onlyComparison = !latest && !!latestAny && latestAny.run_kind === 'comparison';
+  // 最近一次跑不是正式跑（自检 / 对照）时，要告诉读者「有更新的跑，但它不算成绩」，
+  // 否则读者会以为上面的成绩就是最新的那次。
+  const nonRealIsNewer = !!(latest && latestAny && latestAny.run_kind !== 'real' && latestAny.file !== latest.file);
+  const nonRealHint = !nonRealIsNewer ? '' : (latestAny.run_kind === 'comparison'
+    ? `<br>另有 ${esc(latestAny.time_display)} 的<b>对照跑</b>（<code>--compare</code> 或强制降级，${esc(latestAny.passed ?? 0)}/${esc(latestAny.total ?? 0)}）——它是实验不是成绩，不进「最新成绩」，见下方历史结果里标「对照」的那一行。`
+    : `<br>另有 ${esc(latestAny.time_display)} 的自检跑（<code>${esc(latestAny.model || 'mock')}</code>，阴性对照，不进成绩），见下方历史结果。`);
   const statHtml = (k, v, color) => `<div class="stat"><div class="k">${esc(k)}</div>
       <div class="v"${color ? ` style="color:${color}"` : ''}>${v}</div></div>`;
   const cases = (latest && latest.cases) || [];
@@ -1412,10 +1422,13 @@ async function renderRag() {
       <div class="hint">最新一次（真实模型）：${esc(latest.time_display)}${latest.archived ? ' <span class="badge">历史归档</span>' : ''}
         · 被测对象 <b>${esc(latest.model || '—')}</b>
         · ${esc(latest.file)}${latest.report_file ? ` · <span class="catname">${esc(latest.report_file)}</span>` : ''}
-        ${selfcheckIsNewer ? `<br>另有 ${esc(latestAny.time_display)} 的自检跑（<code>${esc(latestAny.model || 'mock')}</code>，阴性对照，不进成绩），见下方历史结果。` : ''}</div>
+        ${nonRealHint}</div>
       <div class="grid" style="margin-bottom:4px">
         ${statHtml('任务通过率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过${Number(latest.skipped || 0) ? ` · ${esc(latest.skipped)} 跳过` : ''}</div>`, rateColor(latest.pass_rate || 0))}
-        ${statHtml(`检索层 recall@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
+        ${statHtml(`检索层 命中率@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
+        ${statHtml(`检索层 召回率@${esc(latest.recall_k ?? 2)}`, latest.recall_ratio_at_k === undefined || latest.recall_ratio_at_k === null
+          ? '需重跑<div class="k">这份结果没有召回率字段</div>'
+          : `${pct(latest.recall_ratio_at_k)}<div class="k">逐题捞回金标段数的算术平均</div>`, latest.recall_ratio_at_k === undefined || latest.recall_ratio_at_k === null ? '' : rateColor(latest.recall_ratio_at_k))}
         ${statHtml('知识库', `${esc(latest.doc_count ?? '—')} 段<div class="k">top-${esc(latest.top_k ?? 2)} 拼进上下文</div>`)}
         ${ragRetrieverStat(latest)}
       </div>
@@ -1434,26 +1447,30 @@ async function renderRag() {
       </table>
     </div>
     </div>` : `
-    <div class="card"><div class="sub" style="margin:0">${onlySelfcheck
-      ? `目前只有自检跑（<code>${esc(latestAny.model || 'mock')}</code>，${esc(latestAny.time_display)}）——它是管道阴性对照，不算成绩。跑一次真实模型：<code>python rag_eval/run_eval.py --models deepseek-chat</code>。`
-      : `暂无结果。先跑 <code>python rag_eval/run_eval.py</code>（零成本冒烟：<code>--models mock-baseline --no-embedding</code>）生成 <code>rag_eval/results/result-*.json</code>。`}</div></div>`}
+    <div class="card"><div class="sub" style="margin:0">${onlyComparison
+      ? `暂<b>无正式成绩</b>——最近一次（${esc(latestAny.time_display)}，${esc(latestAny.passed ?? 0)}/${esc(latestAny.total ?? 0)} 通过，检索后端${esc(latestAny.retriever_label || '—')}）是<b>对照跑</b>：它是人为做对比的实验（<code>--compare</code> 或强制降级），不是系统当前水平，所以不占「最新成绩」的位置。要看它见下方历史结果里标「对照」的那一行；要出正式成绩：<code>python rag_eval/run_eval.py --models deepseek-chat</code>。`
+      : (onlySelfcheck
+        ? `目前只有自检跑（<code>${esc(latestAny.model || 'mock')}</code>，${esc(latestAny.time_display)}）——它是管道阴性对照，不算成绩。跑一次真实模型：<code>python rag_eval/run_eval.py --models deepseek-chat</code>。`
+        : `暂无结果。先跑 <code>python rag_eval/run_eval.py</code>（零成本冒烟：<code>--models mock-baseline --no-embedding</code>）生成 <code>rag_eval/results/result-*.json</code>。`)}</div></div>`}
     ${runs.length ? `
     <div class="card">
       <div style="font-weight:600;margin-bottom:4px">历史结果（${runs.length} 次）</div>
-      <div class="hint">标「自检」的是 mock 模型跑的管道阴性对照——它答不对是预期行为，不进成绩，只用来证明管道活着。</div>
+      <div class="hint">标「自检」的是 mock 模型跑的管道阴性对照——它答不对是预期行为，不进成绩，只用来证明管道活着；
+        标「对照」的是对照跑（<code>--compare</code> 或强制降级做后端对比的实验），同样是实验不是成绩。</div>
       <table>
-        <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>recall@k</th><th>状态</th></tr>
+        <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>命中率@k</th><th>召回率@k</th><th>状态</th></tr>
         ${runs.map(r => `
           <tr>
             <td class="catname">${esc(r.time_display)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
-            <td><span class="badge">${esc(r.model || '—')}</span>${r.is_mock ? ' <span class="catname">自检 · 阴性对照</span>' : ''}</td>
+            <td><span class="badge">${esc(r.model || '—')}</span>${r.is_mock ? ' <span class="catname">自检 · 阴性对照</span>' : (r.run_kind === 'comparison' ? ' <span class="catname">对照 · 不进成绩</span>' : '')}</td>
             ${rateCell(r.pass_rate || 0)}
             <td class="catname">${r.recall_at_k === undefined || r.recall_at_k === null ? '—' : pct(r.recall_at_k)}</td>
+            <td class="catname">${r.recall_ratio_at_k === undefined || r.recall_ratio_at_k === null ? '<span title="这份结果没有召回率字段，重跑一次即可生成">需重跑</span>' : pct(r.recall_ratio_at_k)}</td>
             <td>${Number(r.failed || 0) === 0
                 ? '<span class="badge pass">无失败</span>'
                 : `<span class="badge fail">${esc(r.failed)} 失败</span>`}
               <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
-          </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="6" class="empty">暂无结果</td></tr>`}
       </table>
     </div>` : ``}`;
 }
@@ -1649,13 +1666,16 @@ async function renderPortal(reports) {
   const ragCard = `
       <div class="ptitle">RAG 层评测</div>
       ${sec('被测对象', `项目内自建 mini-RAG <b>固定管道</b>${rLatest && rLatest.model ? ` · 大脑 ${esc(String(rLatest.model).replace(/^rag-/, ''))}` : ''}`)}
-      ${sec('怎么测', `冻结知识库 ${esc(rLatest ? rLatest.doc_count : 14)} 段 · top-${esc(rLatest ? rLatest.top_k : 2)} 检索 · 三类考点（命中 / 忠实度 / 无答案诚实）· 检索层 recall@k`)}
+      ${sec('怎么测', `冻结知识库 ${esc(rLatest ? rLatest.doc_count : 14)} 段 · top-${esc(rLatest ? rLatest.top_k : 2)} 检索 · 三类考点（命中 / 忠实度 / 无答案诚实）· 检索层 命中率@k 与 召回率@k`)}
       ${rLatest ? sec('最新成绩', `
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(rLatest.pass_rate || 0)}">${esc(rLatest.passed ?? 0)}/${esc(rLatest.total ?? 0)}</b></span>
-        <span class="pchip">recall@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
+        <span class="pchip">命中率@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
+        <span class="pchip" title="逐题捞回的金标段数 ÷ 金标段数，取算术平均；一题多段时才与命中率分岔">召回率@${esc(rLatest.recall_k ?? 2)} ${rLatest.recall_ratio_at_k === undefined || rLatest.recall_ratio_at_k === null
+          ? '<b>需重跑</b>'
+          : `<b class="rate" style="color:${rateColor(rLatest.recall_ratio_at_k)}">${pct(rLatest.recall_ratio_at_k)}</b>`}</span>
         <span class="pwhen">${esc(fmtTime(rLatest.time_display))}</span>`)
       : sec('最新成绩', rOnlySelfcheck
-          ? `<span class="pwhen">暂无真实模型成绩（最近一次 ${esc(fmtTime(rAny.time_display))} 是自检跑，不进成绩）</span>`
+          ? `<span class="pwhen">暂无正式成绩（最近一次 ${esc(fmtTime(rAny.time_display))} 是${rAny.run_kind === 'comparison' ? '对照跑，实验不进成绩' : '自检跑，不进成绩'}）</span>`
           : `<span class="pwhen">暂无结果</span>`)}`;
 
   $app.innerHTML = `
@@ -3029,6 +3049,28 @@ def _is_rag_mock(models) -> bool:
     return name.removeprefix("rag-").startswith("mock-")
 
 
+def _rag_run_kind(data: dict, models: list) -> str:
+    """这份 RAG 跑的性质：`real`（正式）/ `comparison`（对照）/ `mock`（自检）。
+
+    新结果由 `rag_eval/run_eval.py` 直接写 `run_kind`；**老结果没有这个字段**，
+    按三条兜底判（历史成绩不用重跑也不会消失）：
+        1. mock 模型 → `mock`（自检跑，管道阴性对照）；
+        2. 检索后端降级（串里含「字符」/「降级」）→ `comparison`：那是**人为强制降级**
+           做的对比实验，不是系统当前水平，不许占「最新成绩」；
+        3. 其余 → `real`。
+    """
+
+    kind = str(data.get("run_kind") or "").strip()
+    if kind in ("real", "comparison", "mock"):
+        return kind
+    if _is_rag_mock(models):
+        return "mock"
+    text = str(data.get("retriever") or "")
+    if "字符" in text or "降级" in text:
+        return "comparison"
+    return "real"
+
+
 def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
     """把一份 RAG 结果 JSON 归一化成看板用的结构。
 
@@ -3058,6 +3100,8 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
         "model": models[0] if models else "—",
         # 自检跑（mock 模型）是阴性对照，不是被测对象——看板据此决定它能不能进「最新成绩」
         "is_mock": _is_rag_mock(models),
+        # 这次跑的性质：real / comparison / mock（对照跑是实验，不进成绩）
+        "run_kind": _rag_run_kind(data, models),
         "top_k": data.get("top_k"),
         # 原始串留给排查（`retriever(字符后端（降级）)` 这类），卡片上**只用清洗后的三个字段**
         "retriever": data.get("retriever") or "—",
@@ -3068,7 +3112,10 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
         "skipped": first.get("skipped", 0),
         "pass_rate": first.get("pass_rate", 0.0),
         # 检索层：答错时先分清是「没检索到」还是「检索到了没用好」
+        # 命中率（Hit Rate@k）：旧字段，数值与算法一律不动，只是显示名改了
         "recall_at_k": retrieval.get("recall_at_k"),
+        # 召回率（Recall@k）：新字段，**老结果没有** → None，页面显示「需重跑」而不是猜数
+        "recall_ratio_at_k": retrieval.get("recall_ratio_at_k"),
         "recall_k": retrieval.get("k"),
         "recall_scored": retrieval.get("scored", 0),
         "recall_hit": retrieval.get("hit", 0),
@@ -3104,9 +3151,9 @@ def load_rag_runs() -> list:
             pairs.append((entry, path, archived))
     pairs.sort(key=lambda x: _time_key(x[0]["time"]), reverse=True)
     runs = [p[0] for p in pairs]
-    # 逐题明细跟着「最新一次真实模型跑」走，而不是「最新一次跑」——
-    # 否则一次 mock 自检就会把逐题明细顶掉（它 0/13，没有可看的东西）。
-    idx = next((i for i, e in enumerate(runs) if not e.get("is_mock")), None)
+    # 逐题明细跟着「最新一次**正式**跑」走，而不是「最新一次跑」——
+    # 否则一次 mock 自检、或一次强制降级的对照跑就会把逐题明细顶掉。
+    idx = next((i for i, e in enumerate(runs) if e.get("run_kind") == "real"), None)
     if idx is not None:
         entry, path, archived = pairs[idx]
         runs[idx] = _rag_entry(path, archived, with_cases=True) or runs[idx]
@@ -3114,13 +3161,20 @@ def load_rag_runs() -> list:
 
 
 def pick_latest_real_run(runs: list):
-    """「被测对象 / 最新成绩」取最近一次**真实模型**的跑，跳过 mock-* 自检。
+    """「被测对象 / 最新成绩」取最近一次**正式**跑，跳过 mock 自检与对照跑。
 
-    与模型层同款规矩（mock-* 是管道基线，不进通过率排名）：自检跑 13 条全挂是
-    **预期行为**（假模型本来答不对），把它当成绩展示等于向访问者宣称「RAG 层全挂」。
+    两类都不是成绩：
+        * mock 自检（mock-* 假模型）：13 条全挂是**预期行为**，把它当成绩展示
+          等于向访问者宣称「RAG 层全挂」；
+        * 对照跑（`--compare`，或老结果里检索后端被降级的）：那是**实验**
+          （比如人为用 `--no-embedding` 降级做后端对比），它的低分是设计使然，
+          顶掉正式跑的位置会让读者以为那是系统当前水平。
+
+    **找不到就返回 None**：由页面显示「暂无正式成绩」并指出对照跑在哪，
+    不许静默拿对照跑/自检跑的成绩填上去。
     """
     for r in runs:
-        if not r.get("is_mock"):
+        if r.get("run_kind") == "real":
             return r
     return None
 
@@ -3176,8 +3230,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif path in ("/api/rag", "/api/rag.json"):
             runs = load_rag_runs()
             self._json({
-                # latest = 最近一次真实模型的跑（mock 自检不进成绩，见 pick_latest_real_run）；
-                # latest_any 保留「最近一次跑」原样，供页面说明「还有一次更新的自检跑」
+                # latest = 最近一次**正式**跑（mock 自检与对照跑都不进成绩，见 pick_latest_real_run）；
+                # latest_any 保留「最近一次跑」原样，供页面说明「还有一次更新的自检/对照跑」
                 "latest": pick_latest_real_run(runs),
                 "runs": runs,
                 "latest_any": runs[0] if runs else None,

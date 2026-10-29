@@ -18,6 +18,9 @@ from dashboard import app
 def _result(total: int = 13, passed: int = 9) -> dict:
     return {
         "generated_at": "2026-10-26T12:00:00",
+        # 新结果一定带 run_kind（rag_eval/run_eval.py 写的）；这里的 fixture 代表**正式跑**。
+        # 「老结果没有这个字段」的兜底判定由 TestRunKindFallback 单独覆盖。
+        "run_kind": "real",
         "models": ["rag-deepseek-chat"],
         "top_k": 2,
         "retriever": "retriever(字符后端)",
@@ -94,6 +97,7 @@ class TestRagRuns:
 def _selfcheck_result(passed: int = 0, total: int = 13) -> dict:
     """mock 自检跑的结果：0/13 是假模型的预期行为，不是成绩。"""
     data = _result(total=total, passed=passed)
+    data["run_kind"] = "mock"
     data["models"] = ["rag-mock-baseline"]
     data["summary"] = [
         {
@@ -174,6 +178,179 @@ class TestSelfcheckIsNotAScore:
     def test_page_marks_selfcheck_runs(self) -> None:
         assert "自检 · 阴性对照" in app.PAGE, "历史表要标明哪些行是自检跑"
         assert "最新一次（真实模型）" in app.PAGE, "卡片要写明取的是真实模型的跑"
+
+
+def _comparison_result(passed: int = 17, total: int = 22) -> dict:
+    """对照跑的结果：人为做对比的实验（如 `--no-embedding` 强制降级），不是成绩。
+
+    本单真跑过一次：字符后端 17/22（recall 83.3%），它排在时间倒序第一，
+    于是 77.3% 占了「最新成绩」的位置——读者会以为那是系统当前水平。
+    """
+    data = _result(total=total, passed=passed)
+    data["run_kind"] = "comparison"
+    data["retriever"] = "retriever(字符后端（降级）)"
+    data["summary"] = [
+        {
+            "model": "rag-deepseek-chat",
+            "total": total,
+            "passed": passed,
+            "failed": total - passed,
+            "skipped": 0,
+            "pass_rate": passed / total,
+        }
+    ]
+    data["cases"] = [{"id": "rag-017", "status": "失败", "retrieved": ["kb-004"], "gold": ["kb-013"]}]
+    return data
+
+
+class TestComparisonRunIsNotAScore:
+    """对照跑（实验）不是成绩：不许顶掉正式跑的位置。
+
+    与 mock 自检同一类问题——**某些跑是实验，不是成绩**。本单的字符后端跑是人为
+    用 `--no-embedding` 强制降级做的后端对比，77.3% 是设计使然（降级后端本来就差），
+    拿它当「最新成绩」等于向访问者宣称系统的检索水平倒退了。
+    """
+
+    def _env(self, tmp_path: Path, monkeypatch, files: dict[str, dict]) -> Path:
+        results = tmp_path / "results"
+        (results / "archive").mkdir(parents=True)
+        for name, payload in files.items():
+            (results / name).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(app, "RAG_RESULTS_DIR", results)
+        monkeypatch.setattr(app, "RAG_ARCHIVE_DIR", results / "archive")
+        return results
+
+    def test_latest_skips_comparison_runs(self, tmp_path: Path, monkeypatch) -> None:
+        """最新一份是对照跑、次新一份是正式跑 → 取次新那份。"""
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261029-165000.json": _result(total=22, passed=20),
+                "result-20261029-173000.json": _comparison_result(),
+            },
+        )
+        runs = app.load_rag_runs()
+        assert runs[0]["run_kind"] == "comparison", "历史表按时间倒序，对照跑要看得见"
+        latest = app.pick_latest_real_run(runs)
+        assert latest is not None, "有正式跑就必须取到，不能因为对照跑更新就被顶掉"
+        assert latest["file"] == "result-20261029-165000.json"
+        assert latest["run_kind"] == "real"
+
+    def test_all_comparison_has_no_score(self, tmp_path: Path, monkeypatch) -> None:
+        """全是对照跑时返回 None：页面显示「暂无正式成绩」，不许拿对照跑填数。"""
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261029-173000.json": _comparison_result(),
+                "result-20261029-170000.json": _comparison_result(passed=15),
+            },
+        )
+        runs = app.load_rag_runs()
+        assert len(runs) == 2
+        assert app.pick_latest_real_run(runs) is None
+
+    def test_cases_follow_the_real_run_not_comparison(self, tmp_path: Path, monkeypatch) -> None:
+        """逐题明细也要跟正式跑走，不能被对照跑顶掉。"""
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261029-165000.json": _result(total=22, passed=20),
+                "result-20261029-173000.json": _comparison_result(),
+            },
+        )
+        runs = app.load_rag_runs()
+        real = next(r for r in runs if r["run_kind"] == "real")
+        comparison = next(r for r in runs if r["run_kind"] == "comparison")
+        assert len(real["cases"]) == 1, "正式跑那份要带逐题明细"
+        assert comparison["cases"] == [], "对照跑不该占用逐题明细"
+
+    # --- 阴性对照：证明上面两条断言真有区分力（把判定逻辑去掉就该红） ---
+    def test_negative_control_skipping_only_mock_would_pick_comparison(self, tmp_path: Path, monkeypatch) -> None:
+        """只跳 mock 的**旧逻辑**会取到对照跑——所以断言不是白写的。"""
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261029-165000.json": _result(total=22, passed=20),
+                "result-20261029-173000.json": _comparison_result(),
+            },
+        )
+        runs = app.load_rag_runs()
+
+        def old_logic(rs):
+            for r in rs:
+                if not r.get("is_mock"):
+                    return r
+            return None
+
+        picked = old_logic(runs)
+        assert picked is not None and picked["file"] == "result-20261029-173000.json", (
+            "旧逻辑应当取到对照跑（这正是本单要修的 bug）"
+        )
+        assert app.pick_latest_real_run(runs)["file"] != picked["file"], "新逻辑必须改掉这个结果"
+
+    def test_negative_control_all_comparison_would_show_score(self, tmp_path: Path, monkeypatch) -> None:
+        """旧逻辑在全是对照跑时会返回一份成绩填上去——所以「返回 None」不是空断言。"""
+        self._env(
+            tmp_path,
+            monkeypatch,
+            {
+                "result-20261029-173000.json": _comparison_result(),
+                "result-20261029-170000.json": _comparison_result(passed=15),
+            },
+        )
+        runs = app.load_rag_runs()
+        old_picked = next((r for r in runs if not r.get("is_mock")), None)
+        assert old_picked is not None, "旧逻辑会拿对照跑当成绩填上去"
+        assert app.pick_latest_real_run(runs) is None, "新逻辑必须返回 None"
+
+    def test_page_says_no_formal_score_and_marks_comparison(self) -> None:
+        """④兜底显示：全是对照跑时页面要写明「无正式成绩」，历史表要标出对照跑。"""
+        assert "无正式成绩" in app.PAGE, "页面缺「暂无正式成绩」的兜底文案"
+        assert "对照 · 不进成绩" in app.PAGE, "历史表要标明哪些行是对照跑"
+
+
+class TestRunKindFallback:
+    """老结果没有 `run_kind` 字段时的兜底判定（历史成绩不用重跑也不会消失）。"""
+
+    def _entry(self, tmp_path: Path, payload: dict, name: str = "result-20261026-120000.json"):
+        f = tmp_path / name
+        f.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        return app._rag_entry(f)
+
+    def test_legacy_degraded_run_is_comparison(self, tmp_path: Path) -> None:
+        """老的字符后端跑（串里含「字符」/「降级」）→ 判为对照跑。"""
+        data = _result()
+        del data["run_kind"]
+        data["retriever"] = "retriever(字符后端（降级）)"
+        entry = self._entry(tmp_path, data)
+        assert entry["run_kind"] == "comparison"
+
+    def test_legacy_embedding_run_is_real(self, tmp_path: Path) -> None:
+        """老的向量后端跑（非 mock、未降级）→ 判为正式跑，历史成绩不会消失。"""
+        data = _result()
+        del data["run_kind"]
+        data["retriever"] = "retriever(向量后端 BAAI/bge-small-zh-v1.5)"
+        entry = self._entry(tmp_path, data)
+        assert entry["run_kind"] == "real"
+
+    def test_legacy_mock_run_is_mock(self, tmp_path: Path) -> None:
+        """老的自检跑（mock 模型）→ 判为 mock，不被降级兜底抢走。"""
+        data = _selfcheck_result()
+        del data["run_kind"]
+        entry = self._entry(tmp_path, data)
+        assert entry["run_kind"] == "mock"
+        assert entry["is_mock"] is True
+
+    def test_explicit_run_kind_wins(self, tmp_path: Path) -> None:
+        """显式写了 run_kind 就以它为准（向量后端也能被声明成对照跑）。"""
+        data = _result()
+        data["run_kind"] = "comparison"
+        data["retriever"] = "retriever(向量后端 BAAI/bge-small-zh-v1.5)"
+        assert self._entry(tmp_path, data)["run_kind"] == "comparison"
 
 
 class TestRagPortalWiring:
