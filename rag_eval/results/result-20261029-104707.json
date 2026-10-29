@@ -1,5 +1,6 @@
 {
-  "generated_at": "2026-10-28T06:03:43",
+  "generated_at": "2026-10-29T10:47:07",
+  "run_kind": "mock",
   "models": [
     "rag-mock-baseline"
   ],
@@ -7,49 +8,72 @@
   "retriever": "retriever(字符后端（降级）)",
   "knowledge_base": {
     "path": "rag_eval/fixtures/knowledge_base.jsonl",
-    "doc_count": 14,
+    "doc_count": 15,
     "provenance": {
       "frozen_at": "2026-10-26",
-      "doc_count": 14,
+      "doc_count": 15,
       "source": "项目自身 README 与源码事实（README.md 第三章能力全景、agent_eval/ 目录、src/metrics/ 指标实现）",
       "status": "占位版",
       "note": "本知识库是为跑通 RAG 管道而写的占位内容，取材于项目自身可验证的事实，便于金标可核对、可自动判定。正式的知识库选题与题目措辞由出题方逐条拍板后替换，替换时须连同用例金标一起更新并留痕（沿用 fixture 原则：冻结快照、显式升级、永不追新）。",
-      "upgrade_policy": "升级知识库 = 一次显式决策：改文档 + 重标金标 + 在用例.meta 或本文件留痕，三者一起做。"
+      "upgrade_policy": "升级知识库 = 一次显式决策：改文档 + 重标金标 + 在用例.meta 或本文件留痕，三者一起做。",
+      "synthetic_docs": [
+        {
+          "id": "kb-015",
+          "kind": "synthetic",
+          "purpose": "近似干扰段",
+          "description": "模拟项目里真实存在的过期文档（旧 README、旧 CHANGELOG 之类）：记载已被取代的旧口径（3 个数据集 62 条），与 kb-002 的现行口径（5 个数据集 98 条）语义相近、数值冲突。正文内已写明「已被现行口径取代」且「不是项目的真实历史」——这是新旧可分辨的前提，使 rag-022 考的是分辨能力而非运气。"
+        }
+      ],
+      "upgrades": [
+        {
+          "date": "2026-10-29",
+          "change": "新增 kb-015（合成干扰段），doc_count 14 → 15；同步新增用例 rag-017 ~ rag-022 六道难题（多段拼合 / 近似干扰 / 部分可答 / 需推理 / 旧口径干扰）。既有 rag-001 ~ rag-016 的判据与金标一字未动。",
+          "intent": "加难度不加题量：打破「一道题 ↔ 一段资料」的一对一结构，让检索与端到端不再满天花板。"
+        }
+      ]
     }
   },
-  "report_file": "reports/report-cd-rag-20261028-060343.json",
+  "report_file": "reports/report-cd-rag-20261029-104707.json",
   "summary": [
     {
       "model": "rag-mock-baseline",
-      "total": 13,
+      "total": 22,
       "passed": 3,
-      "failed": 10,
-      "skipped": 0,
-      "pass_rate": 0.23076923076923078
+      "failed": 14,
+      "skipped": 5,
+      "pass_rate": 0.17647058823529413
     }
   ],
   "retrieval": {
     "k": 2,
     "backend": "lexical",
-    "total": 13,
-    "scored": 10,
-    "hit": 10,
-    "recall_at_k": 1.0,
-    "retrieved_any": 13,
-    "missed": [],
+    "total": 22,
+    "scored": 18,
+    "hit": 15,
+    "recall_at_k": 0.8333333333333334,
+    "recall_ratio_at_k": 0.8055555555555556,
+    "retrieved_any": 22,
+    "missed": [
+      "rag-001",
+      "rag-016",
+      "rag-022"
+    ],
     "per_case": [
       {
         "id": "rag-001",
         "retrieved": [
-          "kb-001",
-          "kb-002"
+          "kb-015",
+          "kb-001"
         ],
         "gold": [
           "kb-002"
         ],
-        "gold_hit": true,
+        "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 1,
+        "gold_recall": 0.0,
         "scored": true,
-        "top_score": 0.202
+        "top_score": 0.2459
       },
       {
         "id": "rag-002",
@@ -61,6 +85,9 @@
           "kb-010"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.3506
       },
@@ -74,6 +101,9 @@
           "kb-008"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.2676
       },
@@ -87,6 +117,9 @@
           "kb-007"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.3691
       },
@@ -100,6 +133,9 @@
           "kb-009"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.3776
       },
@@ -113,6 +149,9 @@
           "kb-011"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.2334
       },
@@ -126,6 +165,9 @@
           "kb-001"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.1975
       },
@@ -139,6 +181,9 @@
           "kb-004"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.1832
       },
@@ -152,6 +197,9 @@
           "kb-006"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.4232
       },
@@ -165,19 +213,25 @@
           "kb-013"
         ],
         "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
         "scored": true,
         "top_score": 0.3791
       },
       {
         "id": "rag-011",
         "retrieved": [
-          "kb-001",
-          "kb-006"
+          "kb-015",
+          "kb-001"
         ],
         "gold": [],
         "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 0,
+        "gold_recall": 0.0,
         "scored": false,
-        "top_score": 0.1122
+        "top_score": 0.1813
       },
       {
         "id": "rag-012",
@@ -187,6 +241,9 @@
         ],
         "gold": [],
         "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 0,
+        "gold_recall": 0.0,
         "scored": false,
         "top_score": 0.0416
       },
@@ -194,12 +251,159 @@
         "id": "rag-013",
         "retrieved": [
           "kb-006",
-          "kb-001"
+          "kb-015"
         ],
         "gold": [],
         "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 0,
+        "gold_recall": 0.0,
         "scored": false,
         "top_score": 0.1006
+      },
+      {
+        "id": "rag-014",
+        "retrieved": [
+          "kb-007",
+          "kb-003"
+        ],
+        "gold": [],
+        "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 0,
+        "gold_recall": 0.0,
+        "scored": false,
+        "top_score": 0.0734
+      },
+      {
+        "id": "rag-015",
+        "retrieved": [
+          "kb-003",
+          "kb-007"
+        ],
+        "gold": [
+          "kb-007"
+        ],
+        "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
+        "scored": true,
+        "top_score": 0.2509
+      },
+      {
+        "id": "rag-016",
+        "retrieved": [
+          "kb-015",
+          "kb-001"
+        ],
+        "gold": [
+          "kb-014"
+        ],
+        "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 1,
+        "gold_recall": 0.0,
+        "scored": true,
+        "top_score": 0.0942
+      },
+      {
+        "id": "rag-017",
+        "retrieved": [
+          "kb-004",
+          "kb-013"
+        ],
+        "gold": [
+          "kb-013",
+          "kb-002"
+        ],
+        "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 2,
+        "gold_recall": 0.5,
+        "scored": true,
+        "top_score": 0.1524
+      },
+      {
+        "id": "rag-018",
+        "retrieved": [
+          "kb-013",
+          "kb-003"
+        ],
+        "gold": [
+          "kb-013"
+        ],
+        "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
+        "scored": true,
+        "top_score": 0.2842
+      },
+      {
+        "id": "rag-019",
+        "retrieved": [
+          "kb-013",
+          "kb-004"
+        ],
+        "gold": [
+          "kb-004",
+          "kb-013"
+        ],
+        "gold_hit": true,
+        "gold_hit_count": 2,
+        "gold_total": 2,
+        "gold_recall": 1.0,
+        "scored": true,
+        "top_score": 0.2602
+      },
+      {
+        "id": "rag-020",
+        "retrieved": [
+          "kb-002",
+          "kb-015"
+        ],
+        "gold": [
+          "kb-002"
+        ],
+        "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
+        "scored": true,
+        "top_score": 0.2044
+      },
+      {
+        "id": "rag-021",
+        "retrieved": [
+          "kb-002",
+          "kb-015"
+        ],
+        "gold": [
+          "kb-002"
+        ],
+        "gold_hit": true,
+        "gold_hit_count": 1,
+        "gold_total": 1,
+        "gold_recall": 1.0,
+        "scored": true,
+        "top_score": 0.2283
+      },
+      {
+        "id": "rag-022",
+        "retrieved": [
+          "kb-015",
+          "kb-001"
+        ],
+        "gold": [
+          "kb-002"
+        ],
+        "gold_hit": false,
+        "gold_hit_count": 0,
+        "gold_total": 1,
+        "gold_recall": 0.0,
+        "scored": true,
+        "top_score": 0.258
       }
     ]
   },
@@ -212,13 +416,13 @@
       "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
       "status": "失败",
       "retrieved": [
-        "kb-001",
-        "kb-002"
+        "kb-015",
+        "kb-001"
       ],
       "gold": [
         "kb-002"
       ],
-      "gold_hit": true,
+      "gold_hit": false,
       "metrics": [
         {
           "name": "contains",
@@ -477,11 +681,11 @@
       "dimension": "correctness",
       "focus": "honesty",
       "prompt": "这个项目的 RAG 层用的是什么向量数据库？",
-      "answer": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
       "status": "通过",
       "retrieved": [
-        "kb-001",
-        "kb-006"
+        "kb-015",
+        "kb-001"
       ],
       "gold": [],
       "gold_hit": false,
@@ -529,11 +733,11 @@
       "dimension": "correctness",
       "focus": "honesty",
       "prompt": "这个项目的作者毕业于哪所大学？",
-      "answer": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
       "status": "通过",
       "retrieved": [
         "kb-006",
-        "kb-001"
+        "kb-015"
       ],
       "gold": [],
       "gold_hit": false,
@@ -549,22 +753,247 @@
         "judge"
       ],
       "error": null
+    },
+    {
+      "id": "rag-014",
+      "dimension": "relevance",
+      "focus": "faithfulness",
+      "prompt": "我听说这个项目的 RAG 检索是用 Milvus 存向量的，是这样吗？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "跳过",
+      "retrieved": [
+        "kb-007",
+        "kb-003"
+      ],
+      "gold": [],
+      "gold_hit": false,
+      "metrics": [],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-015",
+      "dimension": "relevance",
+      "focus": "faithfulness",
+      "prompt": "听说 similarity 指标用的是 all-MiniLM-L6-v2 这个 embedding 模型，对吗？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "跳过",
+      "retrieved": [
+        "kb-003",
+        "kb-007"
+      ],
+      "gold": [
+        "kb-007"
+      ],
+      "gold_hit": true,
+      "metrics": [],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-016",
+      "dimension": "relevance",
+      "focus": "faithfulness",
+      "prompt": "据说这个项目的看板是用 Flask 搭的，是这样吗？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "跳过",
+      "retrieved": [
+        "kb-015",
+        "kb-001"
+      ],
+      "gold": [
+        "kb-014"
+      ],
+      "gold_hit": false,
+      "metrics": [],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-017",
+      "dimension": "correctness",
+      "focus": "end_to_end",
+      "prompt": "模型层里那个只由裁判模型判定的分类，一共有多少条用例？",
+      "answer": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "status": "失败",
+      "retrieved": [
+        "kb-004",
+        "kb-013"
+      ],
+      "gold": [
+        "kb-013",
+        "kb-002"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['8']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-018",
+      "dimension": "correctness",
+      "focus": "end_to_end",
+      "prompt": "judge 指标判定通过，需要达到几分？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "失败",
+      "retrieved": [
+        "kb-013",
+        "kb-003"
+      ],
+      "gold": [
+        "kb-013"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['4']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-019",
+      "dimension": "correctness",
+      "focus": "end_to_end",
+      "prompt": "“跳过”和“仅记录不参与通过判定”，这两种情况会计入通过率的分母吗？",
+      "answer": "规则基线回答，题目要点：以下是检索到的资料： -------------",
+      "status": "跳过",
+      "retrieved": [
+        "kb-013",
+        "kb-004"
+      ],
+      "gold": [
+        "kb-004",
+        "kb-013"
+      ],
+      "gold_hit": true,
+      "metrics": [],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-020",
+      "dimension": "correctness",
+      "focus": "honesty",
+      "prompt": "模型层的 98 条用例里，qa_zh 有多少条？这些用例分别是什么时候加进去的？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "跳过",
+      "retrieved": [
+        "kb-002",
+        "kb-015"
+      ],
+      "gold": [
+        "kb-002"
+      ],
+      "gold_hit": true,
+      "metrics": [],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-021",
+      "dimension": "correctness",
+      "focus": "end_to_end",
+      "prompt": "模型层 5 个数据集里，用例数最少的那个是哪一类，有多少条？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "失败",
+      "retrieved": [
+        "kb-002",
+        "kb-015"
+      ],
+      "gold": [
+        "kb-002"
+      ],
+      "gold_hit": true,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/2；缺失 ['qa_open', '8']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
+    },
+    {
+      "id": "rag-022",
+      "dimension": "correctness",
+      "focus": "end_to_end",
+      "prompt": "模型层现在的评测用例一共有多少条？",
+      "answer": "{\"answer\": \"以下是检索到的资料： -------------\"}",
+      "status": "失败",
+      "retrieved": [
+        "kb-015",
+        "kb-001"
+      ],
+      "gold": [
+        "kb-002"
+      ],
+      "gold_hit": false,
+      "metrics": [
+        {
+          "name": "contains",
+          "score": 0.0,
+          "passed": false,
+          "detail": "命中 0/1；缺失 ['98']"
+        }
+      ],
+      "skipped_metrics": [
+        "judge"
+      ],
+      "error": null
     }
   ],
   "metrics_summary": {
     "recall_at_k": {
-      "label": "检索层 Recall@2",
-      "value": 1.0,
-      "passed": 10,
-      "scored": 10,
+      "label": "检索层 命中率@2",
+      "value": 0.8333333333333334,
+      "passed": 15,
+      "scored": 18,
       "skipped": false,
+      "reason": ""
+    },
+    "recall_ratio_at_k": {
+      "label": "检索层 召回率@2",
+      "value": 0.8055555555555556,
+      "passed": 16,
+      "scored": 20,
+      "unit": "段",
       "reason": ""
     },
     "end_to_end": {
       "label": "端到端准确率",
-      "value": 0.23076923076923078,
+      "value": 0.17647058823529413,
       "passed": 3,
-      "scored": 13,
+      "scored": 17,
       "skipped": false,
       "reason": ""
     },
@@ -588,8 +1017,8 @@
   "notes": [
     "未配置可用裁判模型，judge 指标已被跳过",
     "被测对象是项目内自建的 mini-RAG 固定管道：每问无条件检索 top-2 再生成，不做「要不要检索」的决策、不产生多步轨迹，因此与 Agent 层区分，单独成层。",
-    "检索后端：retriever(字符后端（降级）)；知识库：rag_eval/fixtures/knowledge_base.jsonl（14 段，冻结快照）。",
-    "检索层 recall@2 = 100.0%（可判 10 条，命中 10 条）；答错时可据此区分「没检索到」与「检索到了没用好」。",
+    "检索后端：retriever(字符后端（降级）)；知识库：rag_eval/fixtures/knowledge_base.jsonl（15 段，冻结快照）。",
+    "检索层 命中率@2 = 83.3%（可判 18 条，命中 15 条）；召回率@2 = 80.6%（逐题捞回金标段数的算术平均，可判 18 题）。答错时可据此区分「没检索到」与「检索到了没用好」；两个指标在「一题对一段」时数值相同，一题多段（如 rag-017）时才看得出差别。",
     "知识库与题目目前是占位版（取材项目自身可核对的事实），正式内容由出题方逐条拍板后替换。"
   ]
 }
