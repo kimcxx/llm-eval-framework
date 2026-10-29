@@ -5,7 +5,7 @@
     python rag_eval/run_eval.py                                          # 真实跑（默认全部可用模型）
     python rag_eval/run_eval.py --models deepseek-chat --tag rag-v1
     python rag_eval/run_eval.py --models mock-baseline --no-embedding --tag ci-rag   # CI 冒烟，零成本
-    python rag_eval/run_eval.py --retrieval-only                         # 只测检索层 recall@k，不调模型
+    python rag_eval/run_eval.py --retrieval-only                         # 只测检索层 命中率@k / 召回率@k，不调模型
 
 与模型层入口（`scripts/run_eval.py`）的关系：判分、执行引擎、报告生成全部复用
 `src/`，这里只做两件特有的事——把被测对象换成 mini-RAG 管道，并额外统计检索层指标。
@@ -70,9 +70,12 @@ def case_focus(case: Any) -> str:
 
 
 def rag_focus_summary(rows: list[dict[str, Any]], retrieval: dict[str, Any]) -> dict[str, Any]:
-    """四项指标汇总（写在结果 JSON 的 metrics_summary 里，供看板直接渲染）。
+    """五项指标汇总（写在结果 JSON 的 metrics_summary 里，供看板直接渲染）。
 
-    * 检索层 Recall@k：沿用 retrieval 的既有口径（命中 ÷ 可判）；
+    * 检索层 命中率@k：**沿用 retrieval 的既有口径**（命中 ÷ 可判），字段名与数值不动，
+      只改显示名——它算的是 Hit Rate@k（只要有一段金标进 top-k 就算），不是 Recall@k；
+    * 检索层 召回率@k：逐题 `|top-k ∩ gold| ÷ |gold|` 的算术平均。**老结果没有这个字段，
+      value 为 None，页面显示「需重跑」**——没有数就写没有，不猜；
     * 端到端准确率：通过数 ÷ 应判数（应判 = 通过 + 失败，**跳过不计入分母**）；
     * 拒答率：考点为 honesty 那几条的通过比例；
     * 忠实度：考点为 faithfulness 那几条由 judge 裁的通过比例；
@@ -88,19 +91,36 @@ def rag_focus_summary(rows: list[dict[str, Any]], retrieval: dict[str, Any]) -> 
             "scored": len(scored),
         }
 
+    # 召回率的两个原始计数（捞回的金标段数 / 金标总段数），给卡片第三行用。
+    # 注意它俩的分母与「可判题数」不同——金标可能一题多段（rag-017 是 2 段）。
+    scored_cases = [c for c in (retrieval.get("per_case") or []) if c.get("scored")]
+    gold_got = sum(int(c.get("gold_hit_count") or 0) for c in scored_cases)
+    gold_all = sum(int(c.get("gold_total") or 0) for c in scored_cases)
     honesty_rows = [r for r in rows if r.get("focus") == "honesty"]
     faith_rows = [r for r in rows if r.get("focus") == "faithfulness"]
     # judge 有没有真的判过：缺席时 judge 根本不会出现在 result.metrics 里（被跳过不计失败）
     judge_seen = any(m.get("name") == "judge" for r in faith_rows for m in (r.get("metrics") or []))
     faith = rate(faith_rows)
     return {
+        # 名字写准：这是**命中率**（Hit Rate@k），字段名 recall_at_k 为兼容历史保留
         "recall_at_k": {
-            "label": f"检索层 Recall@{retrieval.get('k', 2)}",
+            "label": f"检索层 命中率@{retrieval.get('k', 2)}",
             "value": retrieval.get("recall_at_k"),
             "passed": retrieval.get("hit", 0),
             "scored": retrieval.get("scored", 0),
             "skipped": False,
             "reason": "",
+        },
+        # 新增：真正的**召回率**（逐题 |top-k ∩ gold| ÷ |gold| 的算术平均）。
+        # 老结果没有这个字段 → value 为 None，页面显示「需重跑」，不许拿命中率顶替。
+        "recall_ratio_at_k": {
+            "label": f"检索层 召回率@{retrieval.get('k', 2)}",
+            "value": retrieval.get("recall_ratio_at_k"),
+            "passed": gold_got,
+            "scored": gold_all,
+            "unit": "段",
+            # reason 只在**真没有数**时给：有值却写着「需重跑」会让读 JSON 的人误判
+            "reason": "" if retrieval.get("recall_ratio_at_k") is not None else "需重跑（这份结果没有召回率字段）",
         },
         "end_to_end": {
             "label": "端到端准确率",
@@ -152,7 +172,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--retrieval-only",
         action="store_true",
-        help="只跑检索层 recall@k，不调用任何模型（零成本，CI 可跑）",
+        help="只跑检索层 命中率@k / 召回率@k，不调用任何模型（零成本，CI 可跑）",
     )
     return parser.parse_args(argv)
 
@@ -330,9 +350,16 @@ def main(argv: list[str] | None = None) -> int:
             if retriever.init_error
             else []
         ),
-        f"检索层 recall@{top_k} = {retrieval['recall_at_k']:.1%}"
+        f"检索层 命中率@{top_k} = {retrieval['recall_at_k']:.1%}"
         f"（可判 {retrieval['scored']} 条，命中 {retrieval['hit']} 条）；"
-        "答错时可据此区分「没检索到」与「检索到了没用好」。",
+        + (
+            f"召回率@{top_k} = {retrieval['recall_ratio_at_k']:.1%}"
+            f"（逐题捞回金标段数的算术平均，可判 {retrieval['scored']} 题）。"
+            if retrieval.get("recall_ratio_at_k") is not None
+            else ""
+        )
+        + "答错时可据此区分「没检索到」与「检索到了没用好」；"
+        "两个指标在「一题对一段」时数值相同，一题多段（如 rag-017）时才看得出差别。",
         "知识库与题目目前是占位版（取材项目自身可核对的事实），正式内容由出题方逐条拍板后替换。",
     ]
     if provenance_note:

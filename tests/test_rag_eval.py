@@ -2,7 +2,7 @@
 
 分四组：
 1. 知识库与检索器（冻结快照、确定性、无依赖可跑）；
-2. 检索层 recall@k（纯规则，不调模型）；
+2. 检索层 命中率@k / 召回率@k（纯规则，不调模型）；
 3. mini-RAG 管道（上下文有没有真的拼进 prompt、被测对象命名）；
 4. 端到端（用假模型跑通现有 runner，验证判分接得上）。
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -144,7 +145,7 @@ class TestRetriever:
 
 
 # --------------------------------------------------------------------------- #
-# 2. 检索层 recall@k（纯规则）
+# 2. 检索层 命中率@k / 召回率@k（纯规则）
 # --------------------------------------------------------------------------- #
 def _case(case_id: str, prompt: str, gold: list[str]) -> EvalCase:
     return EvalCase(id=case_id, category="rag_cases", prompt=prompt, meta={"gold_doc_ids": gold})
@@ -181,6 +182,91 @@ class TestRetrieval:
         assert stats["hit"] == 1
         assert stats["recall_at_k"] == 1.0
         assert stats["per_case"][0]["gold_hit"] is True
+
+
+@dataclass(frozen=True)
+class _FakeHit:
+    doc_id: str
+    score: float
+
+
+class _ScriptedRetriever:
+    """按脚本返回检索结果的替身：把「捞回了几段」钉死，不受真实后端排序影响。"""
+
+    def __init__(self, script: dict[str, list[str]], backend: str = "scripted") -> None:
+        self._script = script
+        self.backend = backend
+
+    def search(self, query: str, top_k: int = 2) -> list[_FakeHit]:
+        return [_FakeHit(d, 1.0 - i * 0.1) for i, d in enumerate(self._script.get(query, [])[:top_k])]
+
+
+class TestHitRateIsNotRecall:
+    """命中率@k 与 召回率@k 不是一回事——用「一题对两段、只捞回一段」钉死。
+
+    由来：`hit` 用的是 ``any``（只要有一段金标进 top-k 就算命中），那是 **Hit Rate@k**
+    不是 Recall@k。两者在「一题对一段」时数值相同，所以长期没暴露——rag-017 是这批里
+    第一道「一题对两段」的题（金标 kb-013 + kb-002，实测只捞回 kb-002）：命中率 100%、
+    召回率 50%。**只看命中率会把「链条断了一半」误归因成「模型笨」**。
+    """
+
+    def _stats(self, pairs: list[tuple[list[str], list[str]]]) -> dict:
+        """pairs = [(金标, 实际捞回), ...]"""
+        cases: list[EvalCase] = []
+        script: dict[str, list[str]] = {}
+        for i, (gold, retrieved) in enumerate(pairs):
+            cid = f"c{i + 1}"
+            prompt = f"问题 {cid}"
+            cases.append(_case(cid, prompt, gold))
+            script[prompt] = retrieved
+        return evaluate_retrieval(cases, _ScriptedRetriever(script), top_k=2)  # type: ignore[arg-type]
+
+    def test_two_gold_one_retrieved_hit_true_recall_half(self) -> None:
+        """金标 2 段只捞回 1 段 → 命中率 True(100%)、召回率 0.5。一条同时钉住两个指标。"""
+        stats = self._stats([(["kb-013", "kb-002"], ["kb-002", "kb-004"])])
+        assert stats["hit"] == 1, "只要有一段命中，命中率就算命中"
+        assert stats["recall_at_k"] == 1.0, "命中率 = 100%"
+        assert stats["recall_ratio_at_k"] == 0.5, "召回率 = 1/2 = 50%——两个指标在这里分岔"
+        row = stats["per_case"][0]
+        assert (row["gold_hit_count"], row["gold_total"]) == (1, 2), "逐题的捞回/总数要写进结果便于排查"
+        assert row["gold_hit"] is True
+        assert row["gold_recall"] == 0.5
+
+    def test_single_gold_makes_them_equal(self) -> None:
+        """一题对一段时两者相等——这正是它们长期没被区分开的原因。"""
+        stats = self._stats([(["kb-002"], ["kb-002", "kb-004"]), (["kb-008"], ["kb-004", "kb-005"])])
+        assert stats["recall_at_k"] == 0.5
+        assert stats["recall_ratio_at_k"] == 0.5, "单段题：命中率与召回率必然相等"
+
+    def test_unannotated_case_not_in_denominator(self) -> None:
+        """没标出处的题（无答案诚实类）不进任何分母。"""
+        stats = self._stats([([], ["kb-002"])])
+        assert stats["scored"] == 0
+        assert stats["recall_ratio_at_k"] == 0.0
+        assert stats["recall_at_k"] == 0.0
+
+    def test_overall_is_arithmetic_mean_not_pooled(self) -> None:
+        """整体取**逐题算术平均**，不是先合并再算（长尾题不该被压过去）。"""
+        # 题1：2 段捞回 1 段 = 0.5；题2：1 段捞回 1 段 = 1.0 → 平均 0.75
+        # 若先合并再算则是 (1+1)/(2+1) = 0.667——差在这里
+        stats = self._stats([(["kb-a", "kb-b"], ["kb-a"]), (["kb-c"], ["kb-c"])])
+        assert stats["recall_ratio_at_k"] == 0.75
+        assert abs(stats["recall_ratio_at_k"] - 2 / 3) > 1e-9, "不是先合并再算的口径"
+
+    # --- 阴性对照：证明上面的断言真有区分力 ---
+    def test_negative_control_all_instead_of_any(self) -> None:
+        """把命中判定从 ``any`` 换成 ``all``，命中率就会掉到 0——所以断言 1.0 不是白写的。"""
+
+        def hit_if_all(gold: list[str], retrieved: list[str]) -> bool:
+            return bool(gold) and all(g in retrieved for g in gold)
+
+        assert hit_if_all(["kb-013", "kb-002"], ["kb-002", "kb-004"]) is False, "换成 all 就会丢掉这一条"
+        assert self._stats([(["kb-013", "kb-002"], ["kb-002", "kb-004"])])["recall_at_k"] == 1.0
+
+    def test_negative_control_reversed_ratio(self) -> None:
+        """分子分母写反会得到 2.0（>1 的荒谬值）——所以「召回率 = 0.5」不是空断言。"""
+        assert 2 / 1 == 2.0, "写反了会算出 200%"
+        assert self._stats([(["kb-013", "kb-002"], ["kb-002", "kb-004"])])["recall_ratio_at_k"] == 0.5
 
 
 # --------------------------------------------------------------------------- #

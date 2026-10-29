@@ -1282,7 +1282,7 @@ async function renderAgent() {
 }
 
 // RAG 评测页（#rag）：与模型层、Agent 层并列的第三层。
-// 这里要看三件事：检索找没找对（recall@k）、生成有没有忠于资料、资料里没有时会不会编。
+// 这里要看三件事：检索找没找对（命中率@k / 召回率@k）、生成有没有忠于资料、资料里没有时会不会编。
 // 逐题把「它依据了哪几段」摆出来，是因为 RAG 的错误有两种完全不同的病因——
 // 没检索到（检索层的锅）和检索到了没用好（生成层的锅），混在一起看就没法归因。
 // 「检索后端」卡片：后端降级时必须显式标出来（kb-007 口径：降级不是沉默的），
@@ -1336,13 +1336,17 @@ function ragMetricStat(m) {
       <div class="k">judge 缺席，不计入通过率</div></div>`;
   }
   const hasValue = Number.isFinite(Number(m.value));
+  // 没有数就写「没有」：老结果缺字段时显示它自带的 reason（如「需重跑」），
+  // 而不是拿 0 或另一个指标顶替——那等于猜一个数字给读者看。
+  const shown = hasValue ? pct(m.value) : (m && m.reason ? esc(m.reason) : '—');
+  const tail = hasValue ? `${esc(m.passed ?? 0)} / ${esc(m.scored ?? 0)}${esc(m.unit || '')}` : '';
   return `<div class="stat"><div class="k">${esc(m.label || '')}</div>
-    <div class="v"${hasValue ? ` style="color:${rateColor(m.value)}"` : ''}>${hasValue ? pct(m.value) : '—'}</div>
-    <div class="k">${esc(m.passed ?? 0)} / ${esc(m.scored ?? 0)}</div></div>`;
+    <div class="v"${hasValue ? ` style="color:${rateColor(m.value)}"` : ''}>${shown}</div>
+    <div class="k">${tail}</div></div>`;
 }
 
 function ragMetricsSummaryCard(ms) {
-  const keys = ['recall_at_k', 'end_to_end', 'honesty', 'faithfulness'];
+  const keys = ['recall_at_k', 'recall_ratio_at_k', 'end_to_end', 'honesty', 'faithfulness'];
   const has = keys.some(k => ms && ms[k]);
   if (!has) {
     return `<div class="card">
@@ -1421,7 +1425,10 @@ async function renderRag() {
         ${nonRealHint}</div>
       <div class="grid" style="margin-bottom:4px">
         ${statHtml('任务通过率', `${pct(latest.pass_rate || 0)}<div class="k">${latest.passed ?? 0} / ${latest.total ?? 0} 通过${Number(latest.skipped || 0) ? ` · ${esc(latest.skipped)} 跳过` : ''}</div>`, rateColor(latest.pass_rate || 0))}
-        ${statHtml(`检索层 recall@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
+        ${statHtml(`检索层 命中率@${esc(latest.recall_k ?? 2)}`, `${pct(latest.recall_at_k || 0)}<div class="k">可判 ${esc(latest.recall_scored ?? 0)} 条 · 命中 ${esc(latest.recall_hit ?? 0)} 条</div>`, rateColor(latest.recall_at_k || 0))}
+        ${statHtml(`检索层 召回率@${esc(latest.recall_k ?? 2)}`, latest.recall_ratio_at_k === undefined || latest.recall_ratio_at_k === null
+          ? '需重跑<div class="k">这份结果没有召回率字段</div>'
+          : `${pct(latest.recall_ratio_at_k)}<div class="k">逐题捞回金标段数的算术平均</div>`, latest.recall_ratio_at_k === undefined || latest.recall_ratio_at_k === null ? '' : rateColor(latest.recall_ratio_at_k))}
         ${statHtml('知识库', `${esc(latest.doc_count ?? '—')} 段<div class="k">top-${esc(latest.top_k ?? 2)} 拼进上下文</div>`)}
         ${ragRetrieverStat(latest)}
       </div>
@@ -1451,18 +1458,19 @@ async function renderRag() {
       <div class="hint">标「自检」的是 mock 模型跑的管道阴性对照——它答不对是预期行为，不进成绩，只用来证明管道活着；
         标「对照」的是对照跑（<code>--compare</code> 或强制降级做后端对比的实验），同样是实验不是成绩。</div>
       <table>
-        <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>recall@k</th><th>状态</th></tr>
+        <tr><th>时间</th><th>被测对象</th><th>通过率</th><th>命中率@k</th><th>召回率@k</th><th>状态</th></tr>
         ${runs.map(r => `
           <tr>
             <td class="catname">${esc(r.time_display)}${r.archived ? ' <span class="badge">归档</span>' : ''}</td>
             <td><span class="badge">${esc(r.model || '—')}</span>${r.is_mock ? ' <span class="catname">自检 · 阴性对照</span>' : (r.run_kind === 'comparison' ? ' <span class="catname">对照 · 不进成绩</span>' : '')}</td>
             ${rateCell(r.pass_rate || 0)}
             <td class="catname">${r.recall_at_k === undefined || r.recall_at_k === null ? '—' : pct(r.recall_at_k)}</td>
+            <td class="catname">${r.recall_ratio_at_k === undefined || r.recall_ratio_at_k === null ? '<span title="这份结果没有召回率字段，重跑一次即可生成">需重跑</span>' : pct(r.recall_ratio_at_k)}</td>
             <td>${Number(r.failed || 0) === 0
                 ? '<span class="badge pass">无失败</span>'
                 : `<span class="badge fail">${esc(r.failed)} 失败</span>`}
               <span class="catname" style="margin-left:6px">${esc(r.passed ?? 0)}/${esc(r.total ?? 0)}</span></td>
-          </tr>`).join('') || `<tr><td colspan="5" class="empty">暂无结果</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="6" class="empty">暂无结果</td></tr>`}
       </table>
     </div>` : ``}`;
 }
@@ -1658,10 +1666,13 @@ async function renderPortal(reports) {
   const ragCard = `
       <div class="ptitle">RAG 层评测</div>
       ${sec('被测对象', `项目内自建 mini-RAG <b>固定管道</b>${rLatest && rLatest.model ? ` · 大脑 ${esc(String(rLatest.model).replace(/^rag-/, ''))}` : ''}`)}
-      ${sec('怎么测', `冻结知识库 ${esc(rLatest ? rLatest.doc_count : 14)} 段 · top-${esc(rLatest ? rLatest.top_k : 2)} 检索 · 三类考点（命中 / 忠实度 / 无答案诚实）· 检索层 recall@k`)}
+      ${sec('怎么测', `冻结知识库 ${esc(rLatest ? rLatest.doc_count : 14)} 段 · top-${esc(rLatest ? rLatest.top_k : 2)} 检索 · 三类考点（命中 / 忠实度 / 无答案诚实）· 检索层 命中率@k 与 召回率@k`)}
       ${rLatest ? sec('最新成绩', `
         <span class="pchip">任务 <b class="rate" style="color:${rateColor(rLatest.pass_rate || 0)}">${esc(rLatest.passed ?? 0)}/${esc(rLatest.total ?? 0)}</b></span>
-        <span class="pchip">recall@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
+        <span class="pchip">命中率@${esc(rLatest.recall_k ?? 2)} <b class="rate" style="color:${rateColor(rLatest.recall_at_k || 0)}">${pct(rLatest.recall_at_k || 0)}</b></span>
+        <span class="pchip" title="逐题捞回的金标段数 ÷ 金标段数，取算术平均；一题多段时才与命中率分岔">召回率@${esc(rLatest.recall_k ?? 2)} ${rLatest.recall_ratio_at_k === undefined || rLatest.recall_ratio_at_k === null
+          ? '<b>需重跑</b>'
+          : `<b class="rate" style="color:${rateColor(rLatest.recall_ratio_at_k)}">${pct(rLatest.recall_ratio_at_k)}</b>`}</span>
         <span class="pwhen">${esc(fmtTime(rLatest.time_display))}</span>`)
       : sec('最新成绩', rOnlySelfcheck
           ? `<span class="pwhen">暂无正式成绩（最近一次 ${esc(fmtTime(rAny.time_display))} 是${rAny.run_kind === 'comparison' ? '对照跑，实验不进成绩' : '自检跑，不进成绩'}）</span>`
@@ -3101,7 +3112,10 @@ def _rag_entry(path: Path, archived: bool = False, with_cases: bool = False):
         "skipped": first.get("skipped", 0),
         "pass_rate": first.get("pass_rate", 0.0),
         # 检索层：答错时先分清是「没检索到」还是「检索到了没用好」
+        # 命中率（Hit Rate@k）：旧字段，数值与算法一律不动，只是显示名改了
         "recall_at_k": retrieval.get("recall_at_k"),
+        # 召回率（Recall@k）：新字段，**老结果没有** → None，页面显示「需重跑」而不是猜数
+        "recall_ratio_at_k": retrieval.get("recall_ratio_at_k"),
         "recall_k": retrieval.get("k"),
         "recall_scored": retrieval.get("scored", 0),
         "recall_hit": retrieval.get("hit", 0),

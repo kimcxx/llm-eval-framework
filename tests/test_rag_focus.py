@@ -88,20 +88,32 @@ class TestDatasetFocus:
 class TestMetricsSummary:
     """四项指标汇总。"""
 
-    def test_four_items_present(self) -> None:
+    def test_five_items_present(self) -> None:
+        """五项指标：命中率@2 与 召回率@2 是**两项**，名字都不许再叫 Recall。"""
         rows = [
             _row("rag-001", "end_to_end", "通过"),
             _row("rag-011", "honesty", "通过"),
             _row("rag-007", "faithfulness", "通过"),
         ]
         ms = rag_focus_summary(rows, {"recall_at_k": 1.0, "k": 2, "scored": 10, "hit": 10})
-        for key in ("recall_at_k", "end_to_end", "honesty", "faithfulness"):
+        for key in ("recall_at_k", "recall_ratio_at_k", "end_to_end", "honesty", "faithfulness"):
             assert key in ms, f"缺指标项 {key}"
             assert ms[key]["label"], f"{key} 缺标签"
         assert ms["end_to_end"]["value"] == 1.0
         assert ms["end_to_end"]["scored"] == 3
         assert ms["honesty"]["value"] == 1.0
-        assert ms["recall_at_k"]["label"] == "检索层 Recall@2"
+        # 名字写准：这是**命中率**（Hit Rate@2），不是召回率
+        assert ms["recall_at_k"]["label"] == "检索层 命中率@2"
+        assert ms["recall_ratio_at_k"]["label"] == "检索层 召回率@2"
+        assert "Recall" not in json.dumps(ms, ensure_ascii=False), "指标标签里不许再出现 Recall 这个错名字"
+
+    def test_missing_recall_ratio_is_not_guessed(self) -> None:
+        """老结果没有召回率字段 → value 为 None + 给出原因，不许拿命中率顶替。"""
+        rows = [_row("rag-001", "end_to_end", "通过")]
+        ms = rag_focus_summary(rows, {"recall_at_k": 1.0, "k": 2, "scored": 1, "hit": 1})
+        assert ms["recall_ratio_at_k"]["value"] is None, "没有这个数就是没有，不猜"
+        assert "需重跑" in ms["recall_ratio_at_k"]["reason"]
+        assert ms["recall_at_k"]["value"] == 1.0, "命中率照旧有值"
 
     def test_skipped_cases_excluded_from_denominator(self) -> None:
         """跳过不计入分母（三态口径）：3 条里 2 通过 1 跳过 → 2/2 而不是 2/3。"""
