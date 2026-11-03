@@ -2578,6 +2578,42 @@ def _is_model_layer_report(name: str) -> bool:
     return not any(mark in lowered for mark in NON_MODEL_REPORT_MARKS)
 
 
+# 报告内部 ``started_at``（ISO，可能带秒）与文件名末尾时间戳的两种写法
+_ISO_FULL_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?")
+_TAIL_STAMP_RE = re.compile(r"(\d{8})-(\d{6})\s*$")
+_TAIL_COMPACT_RE = re.compile(r"(\d{14})\s*$")
+
+
+def _report_stamp(data: dict, filename: str) -> str:
+    """报告时间戳，固定 ``YYYYMMDD-HHMMSS``：**报告内部 ``started_at`` 优先**，文件名末尾兜底。
+
+    由来（2026-11-03 工单）：文件名是 ``report-{tag}-{日期}-{时间}``。tag 自身带日期时
+    （``report-3model-fix-20261103-20261103-104403``）文件里有**两段**日期，原先用
+    ``re.search(r"\\d{8}-\\d{6}")`` 抓第一组，会切出 ``20261103-202611``——它还能被
+    ``_time_key`` 解析成 2026-11-03 20:26:11，**不报错**，于是：
+    两份报告 time 撞车 → 稳定排序按文件名决定先后 → 新报告排第二、首页「最新成绩」
+    继续显示旧报告；跨次对比的默认基线也跟着错。
+
+    所以定三条：①报告内 ``started_at`` 才是事实来源；②退回文件名时只认**末尾**那段
+    （tag 里的日期在前，真正的时间戳在末尾）；③格式保持紧凑串 ``YYYYMMDD-HHMMSS``——
+    跨次对比 tab 拿它做字符串比大小，换成 ISO 会把前端比较弄坏。
+    """
+    m = _ISO_FULL_RE.search(str(data.get("started_at") or ""))
+    if m:
+        y, mo, d, hh, mi, ss = m.groups()
+        return f"{y}{mo}{d}-{hh}{mi}{ss or '00'}"
+    stem = filename[:-5] if filename.endswith(".json") else filename
+    m = _TAIL_STAMP_RE.search(stem)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    m = _TAIL_COMPACT_RE.search(stem)
+    if m:
+        digits = m.group(1)
+        return f"{digits[:8]}-{digits[8:]}"
+    # 两处都认不出：原样交给 _time_key 兜底（它认 ISO 与数字串），不在这里猜
+    return str(data.get("started_at") or "?")
+
+
 def _load_reports():
     """扫描 reports/*.json，返回按时间倒序的元数据列表。"""
     items = []
@@ -2591,7 +2627,6 @@ def _load_reports():
         except Exception:
             continue
         summary = (data.get("summary") or [{}])[0]
-        m = re.search(r"\d{8}-\d{6}", p.stem)
         # 横向报告一份文件含多个模型（summary 有多行）。若只暴露 summary[0]，
         # 列表里整份报告会被显示成第一个模型（通常是被对照的 mock），
         # 让人误以为「看不到 deepseek-pro」；这里额外给出 model_rows 供前端逐模型展示。
@@ -2620,7 +2655,9 @@ def _load_reports():
         repeat = int(data.get("repeat", 1) or 1)
         entry = {
             "file": p.name,
-            "time": (m.group(0) if m else data.get("started_at", "?")),
+            # 内部 started_at 优先、文件名末尾兜底——tag 带日期时文件名里有两段日期，
+            # 抓第一组会得到不存在的时刻且不报错（2026-11-03 排序 bug）
+            "time": _report_stamp(data, p.name),
             # 给前端显示用的规范化时间（文件名时间戳同样会被 tag 里的日期带偏，交给 normalize_display_time）
             "time_display": normalize_display_time(data.get("started_at"), p.name),
             "tag": p.stem.split("-")[0] if "-" in p.stem else "run",
