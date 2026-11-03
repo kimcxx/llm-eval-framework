@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-03T03:01:08",
+  "generated_at": "2026-11-03T03:35:56",
   "run_kind": "mock",
   "models": [
     "rag-mock-baseline"
@@ -33,7 +33,7 @@
       ]
     }
   },
-  "report_file": "reports/report-cd-rag-20261103-030108.json",
+  "report_file": "reports/report-cd-rag-20261103-033556.json",
   "summary": [
     {
       "model": "rag-mock-baseline",
