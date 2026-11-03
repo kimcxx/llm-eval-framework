@@ -2008,7 +2008,10 @@ function buildDimensionMatrix(cases, models) {
   return {models: order, rows};
 }
 
-function dimensionMatrixCard(matrix) {
+// `doc` = 报告对象本身，只用来取维度口径版本（旧口径要挂「口径为旧版」徽标）。
+// 它**必须单独传进来**：卡片里 `matrix.rows.map(r => ...)` 的 `r` 是那一行的回调参数，
+// 出了回调就不存在——2026-11-03 的 `r is not defined` 就是这么来的（误用了行变量名）。
+function dimensionMatrixCard(matrix, doc) {
   if (!matrix || !matrix.rows.length) return '';
   const models = matrix.models;
   const single = models.length <= 1;
@@ -2053,7 +2056,7 @@ function dimensionMatrixCard(matrix) {
 
   return `
     <div class="card">
-      <div style="font-weight:600;margin-bottom:4px">维度 × 模型 对比矩阵${legacyDimNote(r)}</div>
+      <div style="font-weight:600;margin-bottom:4px">维度 × 模型 对比矩阵${legacyDimNote(doc)}</div>
       <div class="hint">行 = 能力维度（子行 = 具体分类），列 = 被测模型，格 = 通过率（下方小字为通过 / 总数）。
         <code>mock-*</code> 是管道基线，灰显、不作为被测对象；${single
           ? '本报告只有一个模型，矩阵退化为单列。'
@@ -2091,7 +2094,7 @@ function renderSummaryTab(r) {
           </tr>`).join('')}
       </table>
     </div>
-    ${dimensionMatrixCard(matrix)}
+    ${dimensionMatrixCard(matrix, r)}
     ${(s[0] && s[0].metric_avg) ? `
     <details class="card">
       <summary style="font-weight:600">指标均值（首个模型）</summary>

@@ -40,7 +40,9 @@ class TestMatrixTemplate:
     def test_matrix_is_wired_into_summary_tab(self) -> None:
         assert "function buildDimensionMatrix" in app.PAGE
         assert "function dimensionMatrixCard" in app.PAGE
-        assert "dimensionMatrixCard(matrix)" in app.PAGE
+        # 卡片要显式收报告对象：它标题上的「口径为旧版」徽标依赖 doc；
+        # 曾经借用回调的行变量 r，汇总 tab 直接 ReferenceError（2026-11-03）。
+        assert "dimensionMatrixCard(matrix, r)" in app.PAGE
 
     def test_columns_come_from_summary_order(self) -> None:
         """列 = 本报告所有被测模型，顺序照 summary（= 配置顺序）。"""
